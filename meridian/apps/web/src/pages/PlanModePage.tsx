@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { usePlanStore, type PlanRoom, type Task } from "@/stores/usePlanStore";
+import { usePlanTrackingStore } from "@/stores/usePlanTrackingStore";
 import { AnnotationPanel } from "@/components/PlanMode/AnnotationPanel";
 import { BriefingMode } from "@/components/PlanMode/BriefingMode";
 import { timeAgo } from "@/lib/utils";
+import { SOURCE_TO_DATASOURCE } from "@/config/dataSources";
 
 const TASK_STATUSES = ["to_monitor", "assigned", "active_watch", "escalated", "completed"];
 const STATUS_LABEL: Record<string, string> = {
@@ -21,6 +23,8 @@ const authHeaders = () => ({
 export function PlanModePage() {
   const { rooms, activeRoomId, fetchRooms, setActiveRoom, fetchRoomData } = usePlanStore();
   const [showCreate, setShowCreate] = useState(false);
+  const [showTracked, setShowTracked] = useState(false);
+  const trackedCount = Object.keys(usePlanTrackingStore((s) => s.trackedEntities)).length;
 
   useEffect(() => { fetchRooms(); }, [fetchRooms]);
   useEffect(() => { if (activeRoomId) fetchRoomData(activeRoomId); }, [activeRoomId, fetchRoomData]);
@@ -34,6 +38,15 @@ export function PlanModePage() {
           <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>Plan Rooms</span>
           <button onClick={() => setShowCreate(true)} style={{ fontSize: 18, lineHeight: 1, background: "none", border: "none", cursor: "pointer", color: "var(--green-primary)" }} title="New Plan Room">+</button>
         </div>
+        <button onClick={() => { setShowTracked(!showTracked); setActiveRoom(null as unknown as number); }}
+          style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
+            background: showTracked ? "var(--bg-hover)" : "transparent", border: "none",
+            borderLeft: showTracked ? "2px solid var(--green-primary)" : "2px solid transparent",
+            cursor: "pointer", textAlign: "left" }}>
+          <span style={{ fontSize: 13 }}>📍</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: showTracked ? "var(--text-primary)" : "var(--text-secondary)" }}>Tracked Entities</span>
+          {trackedCount > 0 && <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 700, color: "var(--green-primary)", background: "rgba(0,230,118,0.12)", padding: "1px 6px", borderRadius: 8 }}>{trackedCount}</span>}
+        </button>
         <div style={{ flex: 1, overflowY: "auto" }}>
           {showCreate && <CreateRoomForm onClose={() => { setShowCreate(false); fetchRooms(); }} />}
           {rooms.length === 0 && !showCreate && (
@@ -55,7 +68,9 @@ export function PlanModePage() {
       </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        {!activeRoomId ? (
+        {showTracked ? (
+          <TrackedEntitiesPanel />
+        ) : !activeRoomId ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: 32 }}>⊕</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>Select a Plan Room</div>
@@ -461,6 +476,7 @@ function CreateRoomForm({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--border)", background: "var(--bg-hover)" }}>
+
       <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Room name…"
         style={{ width: "100%", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-primary)", fontSize: 12, padding: "5px 8px", outline: "none", marginBottom: 6 }} />
       <input value={description} onChange={(e) => setDescription(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} placeholder="Description (optional)"
@@ -471,6 +487,89 @@ function CreateRoomForm({ onClose }: { onClose: () => void }) {
           {saving ? "Creating…" : "Create"}
         </button>
         <button onClick={onClose} style={{ padding: "5px 8px", borderRadius: 4, background: "var(--bg-card)", color: "var(--text-muted)", border: "1px solid var(--border)", fontSize: 11, cursor: "pointer" }}>✕</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Tracked Entities Panel ────────────────────────────────────────────────────
+
+function TrackedEntitiesPanel() {
+  const { trackedEntities, unpinEntity, clearAll } = usePlanTrackingStore();
+  const entities = Object.values(trackedEntities);
+
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>📍 Tracked Entities</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            {entities.length} entit{entities.length !== 1 ? "ies" : "y"} — positions update live as new data arrives
+          </div>
+        </div>
+        {entities.length > 0 && (
+          <button onClick={clearAll} style={{ padding: "4px 10px", borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--red-critical)", fontSize: 11, cursor: "pointer" }}>
+            Clear all
+          </button>
+        )}
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {entities.length === 0 ? (
+          <div style={{ padding: "40px 24px", textAlign: "center" }}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>📍</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginBottom: 6 }}>No entities tracked yet</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              Click any map marker, then use <strong>Add to Plan</strong> in the detail drawer to track aircraft, vessels, events and more here.
+            </div>
+          </div>
+        ) : entities.map((te) => {
+          const ds = SOURCE_TO_DATASOURCE.get(te.event.source_id);
+          const isLive = ["nasa_iss", "opensky", "adsb_lol", "aishub"].includes(te.event.source_id);
+          const callsign = te.event.metadata?.callsign ?? te.event.metadata?.shipname ?? te.event.metadata?.icao24 ?? te.event.metadata?.mmsi;
+          const secondaryInfo = [
+            te.event.metadata?.baro_altitude && `Alt: ${Math.round(Number(te.event.metadata.baro_altitude))}m`,
+            te.event.metadata?.velocity && `${Math.round(Number(te.event.metadata.velocity) * 1.944)}kt`,
+            te.event.metadata?.sog && `${te.event.metadata.sog}kn`,
+            te.event.metadata?.destination && `→ ${te.event.metadata.destination}`,
+          ].filter(Boolean).join(" · ");
+
+          return (
+            <div key={te.entityKey} style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", display: "flex", gap: 12 }}>
+              <div style={{ fontSize: 22, flexShrink: 0, alignSelf: "flex-start", marginTop: 2 }}>{ds?.icon ?? "●"}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {callsign ? String(callsign) : te.event.title}
+                  </span>
+                  {isLive && (
+                    <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 8, background: "rgba(0,230,118,0.12)", color: "var(--green-primary)", border: "1px solid rgba(0,230,118,0.3)", flexShrink: 0 }}>
+                      ● LIVE
+                    </span>
+                  )}
+                </div>
+                {callsign && (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{te.event.title}</div>
+                )}
+                <div style={{ fontSize: 11, color: "var(--text-secondary)", fontFamily: "var(--font-mono)", marginBottom: secondaryInfo ? 3 : 0 }}>
+                  {te.event.lat.toFixed(4)}°, {te.event.lng.toFixed(4)}°
+                </div>
+                {secondaryInfo && (
+                  <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{secondaryInfo}</div>
+                )}
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                  {ds?.name ?? te.event.source_id.replace(/_/g, " ")}
+                  {te.planRoomName && <> · 📌 {te.planRoomName}</>}
+                  {" · pinned "}{timeAgo(te.pinnedAt)}
+                </div>
+              </div>
+              <button onClick={() => unpinEntity(te.entityKey)}
+                style={{ flexShrink: 0, alignSelf: "flex-start", padding: "3px 8px", borderRadius: 4, background: "none", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 11, cursor: "pointer" }}>
+                ✕
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

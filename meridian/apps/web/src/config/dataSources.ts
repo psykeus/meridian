@@ -1,0 +1,325 @@
+export interface DataSourceConfig {
+  id: string;
+  name: string;
+  icon: string;
+  category: "Aviation" | "Maritime" | "Security" | "Environment" | "Space" | "Cyber" | "Energy" | "Humanitarian" | "Finance";
+  description: string;
+  dataPoints: string[];
+  envVars: { key: string; label: string; secret?: boolean }[];
+  signupUrl: string;
+  docsUrl?: string;
+  free: boolean;
+  refreshSec: number;
+  sourceIds: string[];
+}
+
+export const DATA_SOURCES: DataSourceConfig[] = [
+  // ── AVIATION ────────────────────────────────────────────────────────────
+  {
+    id: "opensky",
+    name: "OpenSky Network",
+    icon: "✈",
+    category: "Aviation",
+    description: "Free global ADS-B aircraft tracker. 50,000+ live aircraft with full transponder data including call sign, altitude, speed, heading, squawk codes, and ICAO24 hex address.",
+    dataPoints: ["Call sign", "ICAO24 hex", "Altitude (m)", "Ground speed (m/s)", "True track (°)", "Squawk code", "Origin country", "On ground status"],
+    envVars: [
+      { key: "OPENSKY_USERNAME", label: "Username" },
+      { key: "OPENSKY_PASSWORD", label: "Password", secret: true },
+    ],
+    signupUrl: "https://opensky-network.org/",
+    docsUrl: "https://openskynetwork.github.io/opensky-api/",
+    free: true,
+    refreshSec: 15,
+    sourceIds: ["opensky"],
+  },
+  {
+    id: "adsb_lol",
+    name: "ADSB.lol",
+    icon: "🛩",
+    category: "Aviation",
+    description: "Crowdsourced ADS-B network with emphasis on military and special-interest aircraft. OSINT-tagged callsigns for strategic, ISR, and government aircraft.",
+    dataPoints: ["Military callsigns", "Strategic bombers", "ISR aircraft", "Government flights", "ICAO24", "Altitude", "Route"],
+    envVars: [],
+    signupUrl: "https://adsb.lol/",
+    docsUrl: "https://api.adsb.lol/docs",
+    free: true,
+    refreshSec: 30,
+    sourceIds: ["adsb_lol"],
+  },
+  {
+    id: "faa_notam",
+    name: "FAA NOTAMs",
+    icon: "⛔",
+    category: "Aviation",
+    description: "FAA Notices to Air Missions. Temporary Flight Restrictions, airspace closures, VIP movement corridors, laser hazards, and drone advisories.",
+    dataPoints: ["TFR boundaries", "Altitude restrictions", "Affected area", "Effective times", "Type/reason", "Authority"],
+    envVars: [
+      { key: "FAA_CLIENT_ID", label: "Client ID" },
+      { key: "FAA_CLIENT_SECRET", label: "Client Secret", secret: true },
+    ],
+    signupUrl: "https://api.faa.gov/",
+    docsUrl: "https://api.faa.gov/docs",
+    free: true,
+    refreshSec: 3600,
+    sourceIds: ["faa_notam"],
+  },
+
+  // ── MARITIME ─────────────────────────────────────────────────────────────
+  {
+    id: "aishub",
+    name: "AISHub",
+    icon: "🚢",
+    category: "Maritime",
+    description: "Aggregated global AIS vessel tracking from 1,000+ stations. 200,000+ vessels with MMSI, call sign, vessel type, destination, ETA, draught, and cargo declarations.",
+    dataPoints: ["MMSI", "Vessel name", "Call sign", "Type (tanker/cargo/naval)", "Destination", "ETA", "Draught (m)", "Length/beam", "Speed/course", "Navigation status"],
+    envVars: [
+      { key: "AISHUB_USERNAME", label: "Username" },
+      { key: "AISHUB_PASSWORD", label: "Password", secret: true },
+    ],
+    signupUrl: "https://www.aishub.net/join",
+    docsUrl: "https://www.aishub.net/api",
+    free: true,
+    refreshSec: 60,
+    sourceIds: ["aishub"],
+  },
+  {
+    id: "uscg",
+    name: "US Coast Guard Maritime",
+    icon: "🆘",
+    category: "Maritime",
+    description: "USCG incident reports, search and rescue operations, safety zones, and security zones from the official USCG broadcast system.",
+    dataPoints: ["Incident type", "Vessel name/ID", "Location", "Status", "SAR operations"],
+    envVars: [],
+    signupUrl: "https://www.navcen.uscg.gov/",
+    free: true,
+    refreshSec: 3600,
+    sourceIds: ["uscg_maritime"],
+  },
+
+  // ── SECURITY & CONFLICT ───────────────────────────────────────────────────
+  {
+    id: "acled",
+    name: "ACLED",
+    icon: "⚔",
+    category: "Security",
+    description: "The Armed Conflict Location & Event Data project. Real-time conflict events: battles, airstrikes, protests, riots, explosions, and civilian targeting with actor IDs and fatality counts.",
+    dataPoints: ["Event type", "Sub-event type", "Actor 1/2", "Interaction code", "Fatalities", "Source reliability", "Admin region", "Country"],
+    envVars: [
+      { key: "ACLED_API_KEY", label: "API Key", secret: true },
+      { key: "ACLED_EMAIL", label: "Registered Email" },
+    ],
+    signupUrl: "https://acleddata.com/register/",
+    docsUrl: "https://apidocs.acleddata.com/",
+    free: true,
+    refreshSec: 3600,
+    sourceIds: ["acled_conflicts"],
+  },
+  {
+    id: "gdelt",
+    name: "GDELT Project",
+    icon: "📡",
+    category: "Security",
+    description: "The Global Database of Events, Language, and Tone. Near-real-time news event extraction from worldwide media. Political events, protests, conflicts, and diplomatic activities.",
+    dataPoints: ["Event code (CAMEO)", "Actor 1/2 country/ethnicity", "Tone score", "Goldstein scale", "Num. mentions", "Source URLs"],
+    envVars: [],
+    signupUrl: "https://www.gdeltproject.org/",
+    docsUrl: "https://blog.gdeltproject.org/gdelt-2-0-our-global-world-in-realtime/",
+    free: true,
+    refreshSec: 900,
+    sourceIds: ["gdelt"],
+  },
+  {
+    id: "opensanctions",
+    name: "OpenSanctions",
+    icon: "🚫",
+    category: "Security",
+    description: "Consolidated global sanctions, wanted lists, and politically exposed persons database. Covers UN, EU, OFAC, and 100+ national lists.",
+    dataPoints: ["Entity name", "Sanction regime", "Reason", "Listing date", "Countries", "Related entities"],
+    envVars: [
+      { key: "OPENSANCTIONS_API_KEY", label: "API Key", secret: true },
+    ],
+    signupUrl: "https://www.opensanctions.org/api/",
+    docsUrl: "https://www.opensanctions.org/docs/api/",
+    free: false,
+    refreshSec: 86400,
+    sourceIds: ["open_sanctions"],
+  },
+
+  // ── ENVIRONMENT ───────────────────────────────────────────────────────────
+  {
+    id: "usgs",
+    name: "USGS Earthquake Catalog",
+    icon: "🌋",
+    category: "Environment",
+    description: "Real-time global earthquake catalog from USGS. Events M2.5+ worldwide updated every minute. Includes magnitude, depth, ShakeMap, and community felt reports.",
+    dataPoints: ["Magnitude", "Depth (km)", "Location string", "Alert level", "Tsunami flag", "Felt reports", "Significance score"],
+    envVars: [],
+    signupUrl: "https://earthquake.usgs.gov/fdsnws/event/1/",
+    free: true,
+    refreshSec: 60,
+    sourceIds: ["usgs_earthquakes"],
+  },
+  {
+    id: "nasa_firms",
+    name: "NASA FIRMS Active Fires",
+    icon: "🔥",
+    category: "Environment",
+    description: "NASA Fire Information for Resource Management System. Near real-time VIIRS/MODIS active fire and thermal anomaly detections globally.",
+    dataPoints: ["Brightness temp (K)", "Fire radiative power (MW)", "Confidence %", "Satellite pass time", "Day/night flag"],
+    envVars: [
+      { key: "NASA_API_KEY", label: "NASA API Key", secret: false },
+    ],
+    signupUrl: "https://api.nasa.gov/",
+    docsUrl: "https://firms.modaps.eosdis.nasa.gov/api/",
+    free: true,
+    refreshSec: 3600,
+    sourceIds: ["nasa_firms"],
+  },
+  {
+    id: "gdacs",
+    name: "GDACS Global Disasters",
+    icon: "⚠",
+    category: "Environment",
+    description: "Global Disaster Alert and Coordination System. Aggregates natural disasters — earthquakes, floods, cyclones, volcanoes, droughts — with impact scoring.",
+    dataPoints: ["Event type", "Alert level (Green/Orange/Red)", "Affected population", "Country", "Magnitude/intensity", "GDACS score"],
+    envVars: [],
+    signupUrl: "https://www.gdacs.org/",
+    free: true,
+    refreshSec: 3600,
+    sourceIds: ["gdacs"],
+  },
+
+  // ── HUMANITARIAN ──────────────────────────────────────────────────────────
+  {
+    id: "reliefweb",
+    name: "ReliefWeb / OCHA",
+    icon: "🤝",
+    category: "Humanitarian",
+    description: "UN OCHA's humanitarian information platform. Crisis reports, displacement data, food security zones, and operational humanitarian situation reports.",
+    dataPoints: ["Disaster type", "Country", "Affected population", "Organization", "Report date", "Crisis phase"],
+    envVars: [],
+    signupUrl: "https://apidoc.rwlabs.org/",
+    free: true,
+    refreshSec: 3600,
+    sourceIds: ["reliefweb"],
+  },
+  {
+    id: "fema",
+    name: "FEMA OpenFEMA",
+    icon: "🏚",
+    category: "Humanitarian",
+    description: "FEMA disaster declarations, active incident tracking, and emergency shelter locations across the United States.",
+    dataPoints: ["Disaster number", "Incident type", "State/county", "Declaration date", "Programs declared", "Incident period"],
+    envVars: [],
+    signupUrl: "https://www.fema.gov/about/openfema/api",
+    free: true,
+    refreshSec: 86400,
+    sourceIds: ["fema"],
+  },
+
+  // ── SPACE ─────────────────────────────────────────────────────────────────
+  {
+    id: "nasa_iss",
+    name: "NASA ISS Position",
+    icon: "🛸",
+    category: "Space",
+    description: "Live International Space Station position updated every 5 seconds via Open Notify API. Includes crew count, orbital altitude, and sub-orbital ground track.",
+    dataPoints: ["Latitude/Longitude", "Crew count", "Altitude (km ~408)", "Orbital period (~92 min)", "Current pass windows"],
+    envVars: [],
+    signupUrl: "http://open-notify.org/Open-Notify-API/ISS-Location-Now/",
+    free: true,
+    refreshSec: 5,
+    sourceIds: ["nasa_iss"],
+  },
+  {
+    id: "nasa_neo",
+    name: "NASA Near Earth Objects",
+    icon: "☄",
+    category: "Space",
+    description: "NASA NeoWs asteroid and near-Earth object close approach data. Hazardous object flags, estimated diameters, and miss distance in AU.",
+    dataPoints: ["Name", "Hazardous flag", "Est. diameter (km)", "Close approach date", "Miss distance (AU/km)", "Relative velocity (km/s)"],
+    envVars: [{ key: "NASA_API_KEY", label: "NASA API Key" }],
+    signupUrl: "https://api.nasa.gov/",
+    free: true,
+    refreshSec: 86400,
+    sourceIds: ["nasa_neo"],
+  },
+
+  // ── CYBER & INFRASTRUCTURE ────────────────────────────────────────────────
+  {
+    id: "nvd",
+    name: "NIST NVD — CVEs",
+    icon: "🔓",
+    category: "Cyber",
+    description: "NIST National Vulnerability Database. Known exploited vulnerabilities, CVSS scores, affected products, and CISA KEV entries.",
+    dataPoints: ["CVE ID", "CVSS score", "Severity", "Affected product/version", "CWE", "Published/modified date", "CISA KEV flag"],
+    envVars: [],
+    signupUrl: "https://nvd.nist.gov/developers/request-an-api-key",
+    docsUrl: "https://nvd.nist.gov/developers/vulnerabilities",
+    free: true,
+    refreshSec: 3600,
+    sourceIds: ["nvd_cve"],
+  },
+  {
+    id: "cloudflare_radar",
+    name: "Cloudflare Radar",
+    icon: "📴",
+    category: "Cyber",
+    description: "Cloudflare's global internet traffic and outage visibility. BGP anomalies, DDoS trends, internet shutdowns, and routing incidents by country/AS.",
+    dataPoints: ["Outage country", "AS number", "Traffic drop %", "Duration", "BGP prefix withdrawals", "Protocol breakdown"],
+    envVars: [{ key: "CLOUDFLARE_API_TOKEN", label: "API Token", secret: true }],
+    signupUrl: "https://dash.cloudflare.com/profile/api-tokens",
+    docsUrl: "https://radar.cloudflare.com/api",
+    free: true,
+    refreshSec: 900,
+    sourceIds: ["cloudflare_radar"],
+  },
+
+  // ── ENERGY ────────────────────────────────────────────────────────────────
+  {
+    id: "eia",
+    name: "EIA Grid Monitor",
+    icon: "🔌",
+    category: "Energy",
+    description: "US Energy Information Administration real-time power grid data. Demand, generation by fuel type, interchange between regions, and outage reports.",
+    dataPoints: ["Demand (MWh)", "Generation mix (% solar/wind/gas/nuclear)", "Net interchange", "Forecast vs. actual", "BA region"],
+    envVars: [{ key: "EIA_API_KEY", label: "API Key", secret: true }],
+    signupUrl: "https://www.eia.gov/opendata/register.php",
+    docsUrl: "https://www.eia.gov/opendata/",
+    free: true,
+    refreshSec: 3600,
+    sourceIds: ["eia_grid"],
+  },
+  {
+    id: "baker_hughes",
+    name: "Baker Hughes Rig Count",
+    icon: "⛽",
+    category: "Energy",
+    description: "Weekly oil and gas rig count by country and basin. Leading indicator for energy production outlook.",
+    dataPoints: ["Active rigs", "Country", "Basin", "Rig type", "Week-over-week change"],
+    envVars: [],
+    signupUrl: "https://rigcount.bakerhughes.com/intl-rig-count",
+    free: true,
+    refreshSec: 604800,
+    sourceIds: ["baker_hughes"],
+  },
+
+  // ── FINANCE ───────────────────────────────────────────────────────────────
+  {
+    id: "coingecko",
+    name: "CoinGecko Crypto",
+    icon: "📈",
+    category: "Finance",
+    description: "Cryptocurrency market data — prices, volume, market cap, and dominance. Useful for tracking sanctions evasion and illicit finance indicators.",
+    dataPoints: ["Price (USD)", "24h change %", "Market cap", "Volume", "Circulating supply"],
+    envVars: [{ key: "COINGECKO_API_KEY", label: "API Key (Pro)", secret: true }],
+    signupUrl: "https://www.coingecko.com/en/api",
+    free: true,
+    refreshSec: 300,
+    sourceIds: ["coingecko"],
+  },
+];
+
+export const DATA_SOURCE_BY_ID = Object.fromEntries(DATA_SOURCES.map((s) => [s.id, s]));
+export const SOURCE_TO_DATASOURCE = new Map<string, DataSourceConfig>();
+DATA_SOURCES.forEach((ds) => ds.sourceIds.forEach((sid) => SOURCE_TO_DATASOURCE.set(sid, ds)));

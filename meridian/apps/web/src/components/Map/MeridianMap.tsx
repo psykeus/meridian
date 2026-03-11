@@ -6,6 +6,7 @@ import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { useLayoutStore } from "@/stores/useLayoutStore";
 import { ALL_LAYERS } from "@/config/layers";
 import type { GeoEvent } from "@/types";
+import { getEntityKey, usePlanTrackingStore } from "@/stores/usePlanTrackingStore";
 
 // ── Raster-only tile styles (inline StyleSpecification) ──────────────────────
 const SATELLITE_STYLE: StyleSpecification = {
@@ -35,7 +36,7 @@ const TERRAIN_STYLE: StyleSpecification = {
         "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
       ],
       tileSize: 256,
-      attribution: "© OpenTopoMap contributors (CC-BY-SA)",
+      attribution: " OpenTopoMap contributors (CC-BY-SA)",
       maxzoom: 17,
     },
   },
@@ -43,11 +44,11 @@ const TERRAIN_STYLE: StyleSpecification = {
 };
 
 const MAP_STYLES: Record<string, { label: string; icon: string; style: string | StyleSpecification }> = {
-  dark:      { label: "Dark",      icon: "◑", style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
-  light:     { label: "Light",     icon: "☀", style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
-  streets:   { label: "Streets",   icon: "⊞", style: "https://tiles.openfreemap.org/styles/liberty" },
-  terrain:   { label: "Terrain",   icon: "◬", style: TERRAIN_STYLE },
-  satellite: { label: "Satellite", icon: "◉", style: SATELLITE_STYLE },
+  dark:      { label: "Dark",      icon: "", style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json" },
+  light:     { label: "Light",     icon: "", style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json" },
+  streets:   { label: "Streets",   icon: "", style: "https://tiles.openfreemap.org/styles/liberty" },
+  terrain:   { label: "Terrain",   icon: "", style: TERRAIN_STYLE },
+  satellite: { label: "Satellite", icon: "", style: SATELLITE_STYLE },
 };
 
 // ── Derived lookups: source_id → layer color / icon ─────────────────────────
@@ -142,7 +143,7 @@ export function MeridianMap() {
   const createMarkerEl = useCallback((event: GeoEvent): HTMLElement => {
     const size       = SEVERITY_SIZE[event.severity] ?? 18;
     const color      = SOURCE_COLOR.get(event.source_id) ?? "#448aff";
-    const icon       = SOURCE_ICON.get(event.source_id) ?? "●";
+    const icon       = SOURCE_ICON.get(event.source_id) ?? "";
     const isCritical = event.severity === "critical";
     const isHigh     = event.severity === "high";
 
@@ -181,29 +182,38 @@ export function MeridianMap() {
     return el;
   }, [setSelectedEvent]);
 
-  // ── Marker sync (add new, remove stale) ─────────────────────────────────
+  // ── Marker sync: add new, update live positions, remove stale ───────────────
+  const updateEntityPosition = usePlanTrackingStore((s) => s.updateEntityPosition);
+  const isTracked = usePlanTrackingStore((s) => s.isTracked);
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
     const existing = markersRef.current;
-    const incoming = new Set(events.map((e) => e.id));
+    const incomingKeys = new Set(events.map(getEntityKey));
 
-    existing.forEach((marker, id) => {
-      if (!incoming.has(id)) { marker.remove(); existing.delete(id); }
+    existing.forEach((marker, key) => {
+      if (!incomingKeys.has(key)) { marker.remove(); existing.delete(key); }
     });
 
     events.forEach((event) => {
-      if (existing.has(event.id)) return;
       if (!isFinite(event.lat) || !isFinite(event.lng)) return;
+      const key = getEntityKey(event);
+
+      if (existing.has(key)) {
+        existing.get(key)!.setLngLat([event.lng, event.lat]);
+        if (isTracked(key)) updateEntityPosition(key, event);
+        return;
+      }
 
       const marker = new maplibregl.Marker({ element: createMarkerEl(event) })
         .setLngLat([event.lng, event.lat])
         .addTo(map);
 
-      existing.set(event.id, marker);
+      existing.set(key, marker);
     });
-  }, [events, createMarkerEl]);
+  }, [events, createMarkerEl, isTracked, updateEntityPosition]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (

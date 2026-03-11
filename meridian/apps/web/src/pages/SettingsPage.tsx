@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { DATA_SOURCES, type DataSourceConfig } from "@/config/dataSources";
 
 interface APIToken {
   id: number;
@@ -23,7 +24,7 @@ const TIERS = [
 ];
 
 export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<"tokens" | "billing" | "orgs">("tokens");
+  const [activeTab, setActiveTab] = useState<"tokens" | "billing" | "orgs" | "sources">("sources");
   const [tokens, setTokens] = useState<APIToken[]>([]);
   const [tokenName, setTokenName] = useState("");
   const [tokenScope, setTokenScope] = useState("read");
@@ -84,18 +85,20 @@ export function SettingsPage() {
 
       <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
         <div style={{ width: 180, flexShrink: 0, borderRight: "1px solid var(--border)", padding: "12px 0" }}>
-          {(["tokens", "billing", "orgs"] as const).map((tab) => (
+          {(["sources", "tokens", "billing", "orgs"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               display: "block", width: "100%", textAlign: "left", padding: "8px 20px",
               background: activeTab === tab ? "var(--bg-hover)" : "none", border: "none",
               borderLeft: activeTab === tab ? "2px solid var(--green-primary)" : "2px solid transparent",
               color: activeTab === tab ? "var(--text-primary)" : "var(--text-muted)",
               fontSize: 13, cursor: "pointer", textTransform: "capitalize",
-            }}>{tab === "tokens" ? "API Tokens" : tab === "billing" ? "Billing" : "Organization"}</button>
+            }}>{tab === "tokens" ? "API Tokens" : tab === "billing" ? "Billing" : tab === "orgs" ? "Organization" : "Data Sources"}</button>
           ))}
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
+          {activeTab === "sources" && <DataSourcesTab />}
+
           {activeTab === "tokens" && (
             <div>
               <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", marginBottom: 6 }}>API Tokens</h2>
@@ -252,6 +255,164 @@ function OrgSettings() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Data Sources Tab ─────────────────────────────────────────────────────────
+
+const CAT_ORDER = ["Aviation", "Maritime", "Security", "Environment", "Humanitarian", "Space", "Cyber", "Energy", "Finance"] as const;
+const CAT_COLOR: Record<string, string> = {
+  Aviation: "#29b6f6", Maritime: "#448aff", Security: "#ff5252",
+  Environment: "#66bb6a", Humanitarian: "#ff8a65", Space: "#00e676",
+  Cyber: "#ff6d00", Energy: "#ffd740", Finance: "#ab47bc",
+};
+
+function DataSourcesTab() {
+  const [filter, setFilter] = useState<string>("All");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [savedKeys, setSavedKeys] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem("meridian_source_keys") ?? "{}"); }
+    catch { return {}; }
+  });
+
+  const categories = ["All", ...CAT_ORDER];
+  const filtered = DATA_SOURCES.filter((ds) => filter === "All" || ds.category === filter);
+  const configured = DATA_SOURCES.filter((ds) =>
+    ds.envVars.length === 0 || ds.envVars.every((v) => savedKeys[v.key])
+  ).length;
+
+  const saveKey = (varKey: string, value: string) => {
+    const next = { ...savedKeys, [varKey]: value };
+    setSavedKeys(next);
+    localStorage.setItem("meridian_source_keys", JSON.stringify(next));
+  };
+
+  const envSnippet = (ds: DataSourceConfig) =>
+    ds.envVars.map((v) => `${v.key}=${savedKeys[v.key] ?? "your_key_here"}`).join("\n");
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+        <div>
+          <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Data Sources</h2>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
+            {configured} of {DATA_SOURCES.length} sources configured. Keys are stored locally and added to your <code style={{ background: "var(--bg-card)", padding: "1px 4px", borderRadius: 3 }}>.env</code> file for the backend workers.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ fontSize: 11, color: "var(--green-primary)" }}>✓ {configured} active</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>· {DATA_SOURCES.length - configured} need setup</div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 20 }}>
+        {categories.map((cat) => (
+          <button key={cat} onClick={() => setFilter(cat)} style={{
+            padding: "3px 10px", borderRadius: 12, border: "1px solid var(--border)",
+            background: filter === cat ? (CAT_COLOR[cat] ?? "var(--green-primary)") : "var(--bg-card)",
+            color: filter === cat ? "#000" : "var(--text-muted)",
+            fontSize: 11, fontWeight: 600, cursor: "pointer",
+          }}>{cat}</button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {filtered.map((ds) => {
+          const isConfigured = ds.envVars.length === 0 || ds.envVars.every((v) => savedKeys[v.key]);
+          const isOpen = expanded === ds.id;
+          return (
+            <div key={ds.id} style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
+              borderLeft: `3px solid ${CAT_COLOR[ds.category] ?? "var(--border)"}` }}>
+              <button onClick={() => setExpanded(isOpen ? null : ds.id)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                  background: "var(--bg-card)", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <span style={{ fontSize: 18 }}>{ds.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>{ds.name}</span>
+                    <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8,
+                      background: `${CAT_COLOR[ds.category]}22`, color: CAT_COLOR[ds.category] ?? "var(--text-muted)",
+                      border: `1px solid ${CAT_COLOR[ds.category]}44`, fontWeight: 600 }}>{ds.category}</span>
+                    {ds.free && <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: "rgba(0,230,118,0.1)", color: "var(--green-primary)", border: "1px solid rgba(0,230,118,0.3)" }}>FREE</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{ds.description.slice(0, 80)}…</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: isConfigured ? "var(--green-primary)" : "var(--border)",
+                    boxShadow: isConfigured ? "0 0 6px var(--green-primary)" : "none" }} />
+                  <span style={{ fontSize: 10, color: isConfigured ? "var(--green-primary)" : "var(--text-muted)" }}>
+                    {isConfigured ? "Active" : ds.envVars.length === 0 ? "Active" : "Setup needed"}
+                  </span>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{isOpen ? "▲" : "▼"}</span>
+                </div>
+              </button>
+
+              {isOpen && (
+                <div style={{ padding: "16px", background: "var(--bg-panel)", borderTop: "1px solid var(--border)" }}>
+                  <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>{ds.description}</p>
+
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.08em", marginBottom: 6 }}>DATA FIELDS AVAILABLE</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {ds.dataPoints.map((pt) => (
+                        <span key={pt} style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}>{pt}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.08em", marginBottom: 6 }}>REFRESH RATE</div>
+                    <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                      Every {ds.refreshSec < 60 ? `${ds.refreshSec}s` : ds.refreshSec < 3600 ? `${ds.refreshSec / 60}m` : `${ds.refreshSec / 3600}h`}
+                    </span>
+                  </div>
+
+                  {ds.envVars.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", letterSpacing: "0.08em", marginBottom: 8 }}>API CREDENTIALS</div>
+                      {ds.envVars.map((v) => (
+                        <div key={v.key} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                          <code style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--bg-card)", padding: "2px 6px", borderRadius: 3, width: 200, flexShrink: 0 }}>{v.key}</code>
+                          <input
+                            type={v.secret ? "password" : "text"}
+                            placeholder={`Enter ${v.label}…`}
+                            value={savedKeys[v.key] ?? ""}
+                            onChange={(e) => saveKey(v.key, e.target.value)}
+                            style={{ flex: 1, background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 4,
+                              color: "var(--text-primary)", fontSize: 11, padding: "4px 8px", outline: "none" }}
+                          />
+                        </div>
+                      ))}
+
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Copy to <code style={{ background: "var(--bg-card)", padding: "1px 4px", borderRadius: 3 }}>apps/api/.env</code>:</div>
+                        <div style={{ position: "relative" }}>
+                          <pre style={{ fontSize: 10, background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 4, padding: "8px 10px", margin: 0, color: "var(--green-primary)", overflowX: "auto" }}>{envSnippet(ds)}</pre>
+                          <button onClick={() => navigator.clipboard.writeText(envSnippet(ds))}
+                            style={{ position: "absolute", top: 6, right: 6, padding: "2px 8px", borderRadius: 3,
+                              background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 9, cursor: "pointer" }}>Copy</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <a href={ds.signupUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ padding: "5px 14px", borderRadius: 4, background: "var(--green-primary)", color: "var(--bg-app)", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>
+                      {ds.envVars.length === 0 ? "View API Docs →" : "Get API Key →"}
+                    </a>
+                    {ds.docsUrl && (
+                      <a href={ds.docsUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ padding: "5px 14px", borderRadius: 4, background: "var(--bg-card)", color: "var(--text-muted)", fontSize: 11, textDecoration: "none", border: "1px solid var(--border)" }}>Docs →</a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
