@@ -1,6 +1,7 @@
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { timeAgo } from "@/lib/utils";
 
 const CHOKEPOINTS = [
@@ -19,9 +20,8 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function SupplyChainPanel() {
-  const events = useEventStore((s) =>
-    s.getFilteredEvents().filter((e) => e.category === "maritime").slice(0, 50)
-  );
+  const allEvents = useFilteredEvents();
+  const events = allEvents.filter((e) => e.category === "maritime").slice(0, 50);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   const pirateEvents = events.filter((e) =>

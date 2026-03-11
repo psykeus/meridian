@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import maplibregl from "maplibre-gl";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { useLayoutStore } from "@/stores/useLayoutStore";
 import { ALL_LAYERS } from "@/config/layers";
 import { SEVERITY_COLOR, CATEGORY_ICON } from "@/lib/utils";
@@ -18,7 +19,7 @@ export function MeridianMap() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
-  const allEvents = useEventStore((s) => s.getFilteredEvents());
+  const allEvents = useFilteredEvents();
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
   const activeLayers = useLayoutStore((s) => s.activeLayers);
 

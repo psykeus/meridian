@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import GridLayout from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
@@ -58,11 +59,10 @@ export function DashboardPage() {
 }
 
 export function ConflictPanel() {
-  const events = useEventStore((s) =>
-    s.getFilteredEvents().filter((e) =>
-      e.category === "geopolitical" || e.category === "military"
-    ).slice(0, 50)
-  );
+  const allEvents = useFilteredEvents();
+  const events = allEvents.filter((e) =>
+    e.category === "geopolitical" || e.category === "military"
+  ).slice(0, 50);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   return (
@@ -80,9 +80,8 @@ export function ConflictPanel() {
 }
 
 export function WeatherSeismicPanel() {
-  const events = useEventStore((s) =>
-    s.getFilteredEvents().filter((e) => e.category === "environment").slice(0, 50)
-  );
+  const allEvents = useFilteredEvents();
+  const events = allEvents.filter((e) => e.category === "environment").slice(0, 50);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   return (

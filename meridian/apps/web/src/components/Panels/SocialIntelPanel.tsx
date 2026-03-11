@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { timeAgo } from "@/lib/utils";
 import type { GeoEvent } from "@/types";
 
@@ -21,12 +22,11 @@ const SIGNAL_SCORE = (e: GeoEvent): number => {
 
 export function SocialIntelPanel() {
   const [minSignal, setMinSignal] = useState(30);
-  const events = useEventStore((s) =>
-    s.getFilteredEvents()
+  const allEvents = useFilteredEvents();
+  const events = allEvents
       .filter((e) => ["rss_news", "gdelt", "who_outbreaks", "reliefweb", "acled", "promed_rss"].includes(e.source_id))
       .filter((e) => SIGNAL_SCORE(e) >= minSignal)
-      .slice(0, 60)
-  );
+      .slice(0, 60);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   return (

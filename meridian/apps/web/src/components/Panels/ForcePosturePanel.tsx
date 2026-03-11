@@ -1,6 +1,7 @@
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { timeAgo } from "@/lib/utils";
 import type { GeoEvent } from "@/types";
 
@@ -19,11 +20,10 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function ForcePosturePanel() {
-  const events = useEventStore((s) =>
-    s.getFilteredEvents()
-      .filter((e) => (e.source_id === "opensky" || e.source_id === "aishub") && e.severity !== "info")
-      .slice(0, 20)
-  );
+  const allEvents = useFilteredEvents();
+  const events = allEvents
+    .filter((e) => (e.source_id === "opensky" || e.source_id === "aishub") && e.severity !== "info")
+    .slice(0, 20);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   return (

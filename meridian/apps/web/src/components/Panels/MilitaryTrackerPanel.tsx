@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { SEVERITY_COLOR, timeAgo } from "@/lib/utils";
 import type { GeoEvent } from "@/types";
 
@@ -9,13 +10,12 @@ type Tab = "AIR" | "NAVAL";
 
 export function MilitaryTrackerPanel() {
   const [tab, setTab] = useState<Tab>("AIR");
-  const events = useEventStore((s) =>
-    s.getFilteredEvents().filter((e) =>
+  const allEvents = useFilteredEvents();
+  const events = allEvents.filter((e) =>
       tab === "AIR"
         ? e.source_id === "opensky" && e.category === "aviation"
         : e.source_id === "aishub" && (e.metadata as any)?.ship_type === "35"
-    ).slice(0, 50)
-  );
+    ).slice(0, 50);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   return (

@@ -1,6 +1,7 @@
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { SEVERITY_COLOR, timeAgo } from "@/lib/utils";
 
 const KP_COLOR = (kp: number) =>
@@ -15,11 +16,10 @@ const UPCOMING_LAUNCHES = [
 ];
 
 export function SpaceLaunchesPanel() {
-  const events = useEventStore((s) =>
-    s.getFilteredEvents()
-      .filter((e) => e.source_id === "nasa_iss" || e.source_id === "noaa_space_weather")
-      .slice(0, 40)
-  );
+  const allEvents = useFilteredEvents();
+  const events = allEvents
+    .filter((e) => e.source_id === "nasa_iss" || e.source_id === "noaa_space_weather")
+    .slice(0, 40);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   const issEvent = events.find((e) => e.source_id === "nasa_iss");

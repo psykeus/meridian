@@ -1,15 +1,15 @@
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { SEVERITY_COLOR, timeAgo } from "@/lib/utils";
 import type { GeoEvent } from "@/types";
 
 export function HumanitarianAlertsPanel() {
-  const events = useEventStore((s) =>
-    s.getFilteredEvents()
-      .filter((e) => e.source_id === "fema" || e.category === "humanitarian")
-      .slice(0, 100)
-  );
+  const allEvents = useFilteredEvents();
+  const events = allEvents
+    .filter((e) => e.source_id === "fema" || e.category === "humanitarian")
+    .slice(0, 100);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   return (

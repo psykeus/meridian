@@ -1,6 +1,7 @@
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { SEVERITY_COLOR, timeAgo } from "@/lib/utils";
 
 const REACTOR_STATUS = [
@@ -22,11 +23,10 @@ const WEAPONS_WATCH = [
 ];
 
 export function NuclearWMDPanel() {
-  const events = useEventStore((s) =>
-    s.getFilteredEvents()
-      .filter((e) => e.source_id === "iaea_news" || e.category === "nuclear")
-      .slice(0, 20)
-  );
+  const allEvents = useFilteredEvents();
+  const events = allEvents
+    .filter((e) => e.source_id === "iaea_news" || e.category === "nuclear")
+    .slice(0, 20);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   return (

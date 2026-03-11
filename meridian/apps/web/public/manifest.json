@@ -8,13 +8,9 @@
   "theme_color": "#00e676",
   "orientation": "landscape-primary",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ],
   "categories": ["productivity", "news", "utilities"],
-  "screenshots": [
-    { "src": "/screenshot-desktop.png", "sizes": "1280x720", "type": "image/png", "form_factor": "wide" }
-  ],
   "shortcuts": [
     { "name": "Dashboard", "url": "/", "description": "Global situational awareness dashboard" },
     { "name": "Plan Mode", "url": "/plan", "description": "Collaborative intelligence operations" },

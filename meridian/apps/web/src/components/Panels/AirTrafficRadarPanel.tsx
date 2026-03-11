@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
+import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { SEVERITY_COLOR } from "@/lib/utils";
 import type { GeoEvent } from "@/types";
 
@@ -15,11 +16,10 @@ type Radius = 25 | 50 | 100 | 250;
 
 export function AirTrafficRadarPanel() {
   const [radius, setRadius] = useState<Radius>(100);
-  const events = useEventStore((s) =>
-    s.getFilteredEvents()
-      .filter((e) => e.source_id === "opensky" && e.category === "aviation")
-      .slice(0, 150)
-  );
+  const allEvents = useFilteredEvents();
+  const events = allEvents
+    .filter((e) => e.source_id === "opensky" && e.category === "aviation")
+    .slice(0, 150);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
 
   const emergencies = events.filter((e) => {
