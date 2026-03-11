@@ -32,12 +32,33 @@ from workers.iaea_news import IAEANewsWorker
 from workers.openaq import OpenAQWorker
 from workers.noaa_space_weather import NOAASpaceWeatherWorker
 from workers.acaps import ACAPSWorker
+# Phase 4 workers
+from workers.nvd_cve import NVDCVEWorker
+from workers.cloudflare_radar import CloudflareRadarWorker
+from workers.malwarebazaar import MalwareBazaarWorker
+from workers.eia_grid import EIAGridWorker
+from workers.entso_e import ENTSOEWorker
+from workers.eurdep import EURDEPWorker
+from workers.nasa_neo import NASANEOWorker
+from workers.space_devs import SpaceDevsWorker
+from workers.open_sanctions import OpenSanctionsWorker
+from workers.us_travel_advisory import USTravelAdvisoryWorker
+from workers.fews_net import FEWSNETWorker
+from workers.coingecko import CoinGeckoWorker
+from workers.fred_economics import FREDWorker
+from workers.adsb_lol import ADSBLolWorker
+from workers.ooni import OONIWorker
+from workers.faa_notam import FAANotamWorker
+from workers.uscg_maritime import USCGMaritimeWorker
+from workers.baker_hughes import BakerHughesWorker
+from workers.telegram_osint import TelegramOSINTWorker
 
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
 
 WORKERS: list[FeedWorker] = [
+    # Phase 1 & 2 workers
     USGSEarthquakesWorker(min_magnitude=2.5),
     NOAAWeatherAlertsWorker(),
     ACLEDConflictWorker(),
@@ -63,6 +84,28 @@ WORKERS: list[FeedWorker] = [
     OpenAQWorker(),
     NOAASpaceWeatherWorker(),
     ACAPSWorker(),
+    # Phase 4 workers — batch 1 (cyber/infrastructure)
+    NVDCVEWorker(),
+    CloudflareRadarWorker(),
+    MalwareBazaarWorker(),
+    EIAGridWorker(),
+    ENTSOEWorker(),
+    EURDEPWorker(),
+    # Phase 4 workers — batch 2 (space/geopolitical/economics)
+    NASANEOWorker(),
+    SpaceDevsWorker(),
+    OpenSanctionsWorker(),
+    USTravelAdvisoryWorker(),
+    FEWSNETWorker(),
+    CoinGeckoWorker(),
+    FREDWorker(),
+    # Phase 4 workers — batch 3 (aviation/maritime/OSINT)
+    ADSBLolWorker(),
+    OONIWorker(),
+    FAANotamWorker(),
+    USCGMaritimeWorker(),
+    BakerHughesWorker(),
+    TelegramOSINTWorker(),
 ]
 
 

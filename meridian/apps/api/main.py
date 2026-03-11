@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import get_settings
 from core.redis_client import close_redis, get_redis
 from routers import events, feeds, auth, alerts, plan_rooms, intel
-from routers import orgs, tokens, billing, exports, collab
+from routers import orgs, tokens, billing, exports, collab, chat_sessions
 from workers.scheduler import get_scheduler, run_all_workers_once
 from services.alert_engine import run_alert_engine
 
@@ -63,6 +63,7 @@ app.include_router(exports.router, prefix="/api/v1")
 app.include_router(orgs.router, prefix="/api/v1")
 app.include_router(tokens.router, prefix="/api/v1")
 app.include_router(billing.router, prefix="/api/v1")
+app.include_router(chat_sessions.router, prefix="/api/v1")
 
 
 # ─── WebSocket connection manager ────────────────────────────────────────────

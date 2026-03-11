@@ -7,6 +7,9 @@ import { PlanModePage } from "@/pages/PlanModePage";
 import { WatchListPage } from "@/pages/WatchListPage";
 import { SitrepPage } from "@/pages/SitrepPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { StatusPage } from "@/pages/StatusPage";
+import { PricingPage } from "@/pages/PricingPage";
+import { OnboardingPage } from "@/pages/OnboardingPage";
 import { useEventSocket } from "@/hooks/useSocket";
 
 export default function App() {
@@ -14,6 +17,12 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Standalone public pages (no app shell) */}
+      <Route path="/status" element={<StatusPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
+      <Route path="/onboarding" element={<OnboardingPage />} />
+
+      {/* Main app shell */}
       <Route path="/" element={<AppLayout />}>
         <Route index element={<DashboardPage />} />
         <Route path="feeds" element={<FeedHealthPage />} />

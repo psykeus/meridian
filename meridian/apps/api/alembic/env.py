@@ -16,6 +16,7 @@ from models.plan_room import PlanRoom, PlanRoomMember, Annotation, TimelineEntry
 from models.watch_list import WatchListEntity, IntelNote  # noqa: F401
 from models.org import Organization, OrganizationMember, APIToken, AuditLog  # noqa: F401
 from models.collab import AnnotationComment, ShareableLink  # noqa: F401
+from models.chat import ChatSession, ChatMessage, UserReadingHistory  # noqa: F401
 from core.database import Base
 
 config = context.config

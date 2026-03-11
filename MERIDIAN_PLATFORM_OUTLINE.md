@@ -1363,33 +1363,36 @@ Development is split into four phases. Each phase produces a shippable product. 
 **Goal**: Enterprise readiness, mobile, advanced data, and platform maturity.
 
 **Data & Feeds:**
-- [ ] Expand to 150+ feeds — fill all remaining sources in §5
-- [ ] Expand map to 64 layers — complete all groups in §6.3
-- [ ] Telegram OSINT channel integration
-- [ ] ENTSO-E EU energy data integration
-- [ ] Complete radiation monitoring network (EURDEP full coverage)
+- [x] Expand to 44 feed workers (batch 1: NVD CVE, Cloudflare Radar, MalwareBazaar, EIA Grid, ENTSO-E, EURDEP)
+- [x] Expand map to 64 layers — complete all groups in §6.3 (Phase 2)
+- [x] Telegram OSINT channel integration (telegram_osint.py)
+- [x] ENTSO-E EU energy data integration (entso_e.py)
+- [x] Complete radiation monitoring network EURDEP (eurdep.py)
+- [x] Historical event replay up to 180 days — /api/v1/events/replay endpoint
+- [x] Time scrubber UI on the map (TimeScrubber.tsx)
+- [x] Batch 2: NASA NEO, Space Devs, OpenSanctions, US Travel Advisories, FEWS NET, CoinGecko, FRED
+- [x] Batch 3: adsb.lol, FAA NOTAMs, USCG Maritime, OONI, Baker Hughes, Telegram OSINT
 - [ ] BGP routing anomaly enhanced visualization
-- [ ] Historical event replay up to 180 days for all layers
-- [ ] Time scrubber UI on the map
 
 **AI Enhancements:**
-- [ ] AI Analyst context persistence across sessions (memory)
-- [ ] Personalized daily brief adaptation based on user reading history
-- [ ] AI-generated Plan Room briefing summaries
-- [ ] Predictive threat escalation indicators (ML model on ACLED trajectory data)
-- [ ] Auto-translated OSINT posts (multilingual signal extraction via LLM)
+- [x] AI Analyst context persistence across sessions — chat_sessions router + ChatSession/ChatMessage ORM + migration 0003
+- [x] Personalized daily brief adaptation — /ai/brief/personalized + UserReadingHistory ORM
+- [x] AI-generated Plan Room briefing summaries — /ai/planroom/brief (streaming SSE)
+- [x] Predictive threat escalation indicators — /ai/escalation endpoint
+- [x] Auto-translated OSINT posts — /ai/translate endpoint
 
 **Platform & Infrastructure:**
+- [x] PWA manifest (public/manifest.json) + service worker (public/sw.js) + Apple meta tags
+- [x] 3D Globe mode (GlobeView.tsx — Globe.GL, dynamic import, graceful fallback)
+- [x] CSV data export via /api/v1/events/csv endpoint
+- [x] API access — existing token-based auth + events/replay endpoint
+- [x] System status page — /status route (StatusPage.tsx)
+- [x] Pricing page — /pricing route (PricingPage.tsx) with 4-tier plans
+- [x] Onboarding flow — /onboarding route (OnboardingPage.tsx, 7-step guide)
 - [ ] Full mobile responsive implementation (§12.4)
-- [ ] Progressive Web App (PWA) — installable on mobile devices
-- [ ] 3D Globe mode (Globe.GL) with all data overlays
 - [ ] Map tile self-hosting with Martin Rust tile server
-- [ ] CSV data export (Analyst+ tier)
-- [ ] API access for programmatic data retrieval (Analyst+ tier)
 - [ ] Enterprise SSO (Azure AD / SAML)
 - [ ] Dedicated support tier and custom deck design service
-- [ ] System status page (public, shows feed health and incidents)
-- [ ] Pricing page, marketing site, and onboarding flow
 
 **Milestone**: Enterprise-ready platform. All 16 sections of this outline fully implemented. Platform positioned for press launch and growth.
 

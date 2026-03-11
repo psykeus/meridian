@@ -1,0 +1,23 @@
+{
+  "name": "Meridian — Global Situational Awareness",
+  "short_name": "Meridian",
+  "description": "Open-source global situational awareness and collaborative intelligence platform",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0e1a",
+  "theme_color": "#00e676",
+  "orientation": "landscape-primary",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["productivity", "news", "utilities"],
+  "screenshots": [
+    { "src": "/screenshot-desktop.png", "sizes": "1280x720", "type": "image/png", "form_factor": "wide" }
+  ],
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/", "description": "Global situational awareness dashboard" },
+    { "name": "Plan Mode", "url": "/plan", "description": "Collaborative intelligence operations" },
+    { "name": "Alerts", "url": "/alerts", "description": "Alert rules and notifications" }
+  ]
+}
