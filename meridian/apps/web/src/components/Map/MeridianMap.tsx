@@ -50,20 +50,19 @@ const MAP_STYLES: Record<string, { label: string; icon: string; style: string | 
   satellite: { label: "Satellite", icon: "◉", style: SATELLITE_STYLE },
 };
 
-// ── Derived lookup: source_id → layer color ───────────────────────────────────
+// ── Derived lookups: source_id → layer color / icon ─────────────────────────
 const SOURCE_COLOR = new Map<string, string>();
-ALL_LAYERS.forEach((l) => l.sourceIds.forEach((sid) => SOURCE_COLOR.set(sid, l.color)));
+const SOURCE_ICON  = new Map<string, string>();
+ALL_LAYERS.forEach((l) =>
+  l.sourceIds.forEach((sid) => {
+    if (!SOURCE_COLOR.has(sid)) SOURCE_COLOR.set(sid, l.color);
+    if (!SOURCE_ICON.has(sid))  SOURCE_ICON.set(sid, l.icon);
+  })
+);
 
 // ── Severity → marker diameter (px) ──────────────────────────────────────────
 const SEVERITY_SIZE: Record<string, number> = {
   critical: 30, high: 24, medium: 18, low: 14, info: 10,
-};
-
-// ── Category → emoji icon ─────────────────────────────────────────────────────
-const CAT_ICON: Record<string, string> = {
-  environment: "🌍", geopolitical: "⚔",  aviation: "✈",  maritime: "⚓",
-  humanitarian: "♡", cyber: "⚡",          nuclear: "☢",   space: "🛸",
-  energy: "⚙",       finance: "📈",       health: "🏥",
 };
 
 // ── CSS keyframe animations — injected once into document.head ────────────────
@@ -143,7 +142,7 @@ export function MeridianMap() {
   const createMarkerEl = useCallback((event: GeoEvent): HTMLElement => {
     const size       = SEVERITY_SIZE[event.severity] ?? 18;
     const color      = SOURCE_COLOR.get(event.source_id) ?? "#448aff";
-    const icon       = CAT_ICON[event.category] ?? "●";
+    const icon       = SOURCE_ICON.get(event.source_id) ?? "●";
     const isCritical = event.severity === "critical";
     const isHigh     = event.severity === "high";
 

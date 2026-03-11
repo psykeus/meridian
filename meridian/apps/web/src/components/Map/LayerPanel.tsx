@@ -124,23 +124,34 @@ export function LayerPanel() {
                         key={layer.id}
                         title={layer.description}
                         style={{
-                          display: "flex", alignItems: "center", gap: 10,
-                          padding: "5px 12px 5px 28px",
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "5px 12px 5px 24px",
                           cursor: "pointer",
                           background: active ? "var(--bg-hover)" : "transparent",
                           transition: "background 100ms",
                         }}
                       >
-                        <div
+                        <span
                           style={{
-                            width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-                            background: active ? layer.color : "var(--border)",
-                            transition: "background 150ms",
+                            fontSize: 13, flexShrink: 0, lineHeight: 1,
+                            opacity: active ? 1 : 0.35,
+                            filter: active ? `drop-shadow(0 0 4px ${layer.color}99)` : "none",
+                            transition: "opacity 150ms, filter 150ms",
                           }}
-                        />
+                        >
+                          {layer.icon}
+                        </span>
                         <span style={{ flex: 1, fontSize: 12, color: active ? "var(--text-primary)" : "var(--text-secondary)" }}>
                           {layer.label}
                         </span>
+                        <div
+                          style={{
+                            width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                            background: active ? layer.color : "transparent",
+                            border: `1px solid ${active ? layer.color : "var(--border)"}`,
+                            transition: "background 150ms",
+                          }}
+                        />
                         <input
                           type="checkbox"
                           checked={active}
