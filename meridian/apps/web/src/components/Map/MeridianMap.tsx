@@ -97,9 +97,10 @@ export function MeridianMap() {
   const [styleKey,    setStyleKey]    = useState("dark");
   const [panelOpen,   setPanelOpen]   = useState(false);
 
-  const allEvents       = useFilteredEvents();
+  const allEvents        = useFilteredEvents();
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
-  const activeLayers    = useLayoutStore((s) => s.activeLayers);
+  const isDrawerOpen     = useEventStore((s) => s.isDrawerOpen);
+  const activeLayers     = useLayoutStore((s) => s.activeLayers);
 
   const activeSourceIds = useMemo(
     () => new Set(ALL_LAYERS.filter((l) => activeLayers.has(l.id)).flatMap((l) => l.sourceIds)),
@@ -139,6 +140,15 @@ export function MeridianMap() {
     map.setStyle(MAP_STYLES[styleKey].style as string | StyleSpecification);
   }, [styleKey]);
 
+  // ── Resize map when context drawer opens/closes ────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    // Flush layout then resize so MapLibre pixel→lngLat projection stays accurate
+    const id = requestAnimationFrame(() => map.resize());
+    return () => cancelAnimationFrame(id);
+  }, [isDrawerOpen]);
+
   // ── Marker element factory ───────────────────────────────────────────────
   const createMarkerEl = useCallback((event: GeoEvent): HTMLElement => {
     const size       = SEVERITY_SIZE[event.severity] ?? 18;
@@ -177,7 +187,10 @@ export function MeridianMap() {
       el.style.boxShadow = "";
       el.style.animation = anim;
     });
-    el.addEventListener("click", (e) => { e.stopPropagation(); setSelectedEvent(event); });
+    // Stop mousedown/touchstart so MapLibre never registers a pan-drag from marker clicks
+    el.addEventListener("mousedown",  (e) => e.stopPropagation());
+    el.addEventListener("touchstart", (e) => e.stopPropagation(), { passive: true });
+    el.addEventListener("click",      (e) => { e.stopPropagation(); setSelectedEvent(event); });
 
     return el;
   }, [setSelectedEvent]);

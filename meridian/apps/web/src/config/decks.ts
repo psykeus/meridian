@@ -22,7 +22,7 @@ export const DECKS: Deck[] = [
     label: "Command Center",
     description: "Full-spectrum global operational overview",
     icon: "◉",
-    layers: ["earthquakes", "armed_conflicts", "weather_alerts", "emergency_squawks", "wildfires", "fema_disasters"],
+    layers: ["earthquakes", "armed_conflicts", "weather_alerts", "emergency_squawks", "civil_flights", "wildfires", "fema_disasters"],
     panels: [
       { i: "conflict",  component: "ConflictMonitor",  x: 0, y: 0, w: 6, h: 10, minW: 3, minH: 5 },
       { i: "weather",   component: "WeatherSeismic",   x: 6, y: 0, w: 6, h: 10, minW: 3, minH: 5 },
@@ -37,7 +37,7 @@ export const DECKS: Deck[] = [
     label: "War & Conflict",
     description: "Active conflict and military movement monitoring",
     icon: "⚔",
-    layers: ["armed_conflicts", "gdelt_events", "emergency_squawks", "vessels", "news"],
+    layers: ["armed_conflicts", "gdelt_events", "emergency_squawks", "civil_flights", "vessels", "news"],
     panels: [
       { i: "conflict",  component: "ConflictMonitor",  x: 0, y: 0, w: 6, h: 14, minW: 4, minH: 6 },
       { i: "posture",   component: "ForcePosture",     x: 6, y: 0, w: 3, h: 14, minW: 3, minH: 6 },

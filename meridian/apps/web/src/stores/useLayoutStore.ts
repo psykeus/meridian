@@ -101,11 +101,23 @@ export const useLayoutStore = create<LayoutStore>()(
     }),
     {
       name: "meridian-layout",
+      version: 2,
       partialize: (state) => ({
         savedLayouts: state.savedLayouts,
         activeDeckId: state.activeDeckId,
         activeLayers: [...state.activeLayers],
       }),
+      migrate: (persisted: unknown, fromVersion: number) => {
+        const p = persisted as any;
+        if (fromVersion < 2) {
+          // Merge new default layers into existing persisted set without wiping user choices
+          const deckId = p?.activeDeckId ?? DEFAULT_DECK_ID;
+          const defaults = [...defaultLayersForDeck(deckId)];
+          const existing: string[] = p?.activeLayers ?? defaults;
+          p.activeLayers = [...new Set([...existing, ...defaults])];
+        }
+        return p;
+      },
       merge: (persisted: any, current) => ({
         ...current,
         ...(persisted as Partial<LayoutStore>),

@@ -6,42 +6,47 @@ from .base import FeedWorker
 from models.geo_event import GeoEvent, FeedCategory, SeverityLevel
 from core.config import get_settings
 
+# ── Emergency squawk classification ──────────────────────────────────────────
 _EMERGENCY_SQUAWKS = {"7700", "7600", "7500"}
-
 _SQUAWK_LABELS = {
     "7700": "General Emergency",
     "7600": "Radio Failure",
     "7500": "Hijack / Unlawful Interference",
 }
-
 _SQUAWK_SEVERITY = {
     "7700": SeverityLevel.high,
     "7600": SeverityLevel.medium,
     "7500": SeverityLevel.critical,
 }
 
-# OAuth2 Client Credentials endpoint (new auth flow)
+# OAuth2 Client Credentials (new auth flow replacing Basic Auth)
 _TOKEN_URL = (
     "https://auth.opensky-network.org/auth/realms/opensky-network"
     "/protocol/openid-connect/token"
 )
 _STATES_URL = "https://opensky-network.org/api/states/all"
 
+# Limit total aircraft events per fetch to keep DB manageable
+_MAX_AIRCRAFT = 1000
+
 
 class OpenSkyWorker(FeedWorker):
-    """OpenSky Network — live ADS-B flight states (emergency squawks only).
+    """OpenSky Network — live ADS-B flight states for ALL airborne aircraft.
+
+    Emits every airborne aircraft visible to ADS-B:
+      - Emergency squawks (7700/7600/7500): critical/high/medium severity
+      - All other airborne aircraft: info severity
 
     Auth priority:
-      1. OAuth2 Client Credentials (OPENSKY_CLIENT_ID + OPENSKY_CLIENT_SECRET)
-      2. Legacy Basic Auth (OPENSKY_USERNAME + OPENSKY_PASSWORD) — deprecated,
-         supported only during OpenSky's transition period.
-      3. Anonymous — limited to 10 req/min and fewer state vectors.
+      1. OAuth2 Client Credentials  (OPENSKY_CLIENT_ID + OPENSKY_CLIENT_SECRET)
+      2. Legacy Basic Auth          (OPENSKY_USERNAME + OPENSKY_PASSWORD) — deprecated
+      3. Anonymous                  (limited rate, fewer state vectors)
     """
 
     source_id = "opensky"
     display_name = "OpenSky Aircraft Tracking"
     category = FeedCategory.aviation
-    refresh_interval = 15
+    refresh_interval = 60  # seconds — OpenSky anonymous: 10 req/min; authenticated: higher
 
     def __init__(self) -> None:
         super().__init__()
@@ -51,15 +56,11 @@ class OpenSkyWorker(FeedWorker):
     # ── Token management ──────────────────────────────────────────────────────
 
     async def _get_bearer_token(self, client: httpx.AsyncClient) -> Optional[str]:
-        """Fetch/refresh an OAuth2 access token using Client Credentials flow."""
         s = get_settings()
         if not (s.opensky_client_id and s.opensky_client_secret):
             return None
-
-        # Return cached token if still valid (with 30s buffer)
         if self._token and time.monotonic() < self._token_expires_at - 30:
             return self._token
-
         try:
             resp = await client.post(
                 _TOKEN_URL,
@@ -81,21 +82,17 @@ class OpenSkyWorker(FeedWorker):
             return None
 
     def _build_auth(self, token: Optional[str]) -> dict:
-        """Return appropriate auth kwargs for httpx based on available credentials."""
         if token:
             return {"headers": {"Authorization": f"Bearer {token}"}}
-
-        # Legacy Basic Auth fallback (will stop working once OpenSky ends support)
         s = get_settings()
         if s.opensky_username and s.opensky_password:
             return {"auth": (s.opensky_username, s.opensky_password)}
-
         return {}
 
     # ── Main fetch ────────────────────────────────────────────────────────────
 
     async def fetch(self) -> List[GeoEvent]:
-        async with httpx.AsyncClient(timeout=20) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             token = await self._get_bearer_token(client)
             auth_kwargs = self._build_auth(token)
 
@@ -114,45 +111,67 @@ class OpenSkyWorker(FeedWorker):
         events: List[GeoEvent] = []
         now_iso = datetime.now(timezone.utc).isoformat()
 
-        for state in states:
+        for state in states[:_MAX_AIRCRAFT]:
             try:
                 (icao24, callsign, origin, time_pos, last_contact,
                  lng, lat, baro_alt, on_ground, velocity,
                  heading, vert_rate, sensors, geo_alt,
                  squawk, spi, position_source, *_) = state
 
-                if lng is None or lat is None or on_ground:
+                # Skip aircraft without a valid airborne position
+                if lng is None or lat is None:
+                    continue
+                if on_ground:
+                    continue
+                if not (-90 <= float(lat) <= 90) or not (-180 <= float(lng) <= 180):
                     continue
 
-                squawk = str(squawk or "").strip()
-                callsign = (callsign or "").strip()
+                squawk_str = str(squawk or "").strip()
+                callsign_str = (callsign or "").strip() or icao24.upper()
+                altitude = float(geo_alt or baro_alt or 0)
+                speed_ms = float(velocity or 0)
+                speed_kt = round(speed_ms * 1.944)
+                alt_ft = round(altitude * 3.28084)
 
-                if squawk not in _EMERGENCY_SQUAWKS:
-                    continue
-
-                severity = _SQUAWK_SEVERITY[squawk]
-                label = _SQUAWK_LABELS[squawk]
+                # Classify by squawk first, then default to info
+                if squawk_str in _EMERGENCY_SQUAWKS:
+                    severity = _SQUAWK_SEVERITY[squawk_str]
+                    title = f"SQUAWK {squawk_str} — {_SQUAWK_LABELS[squawk_str]} [{callsign_str}]"
+                    body = (
+                        f"{callsign_str} ({icao24.upper()}) squawking {squawk_str}. "
+                        f"Alt {alt_ft:,}ft · {speed_kt}kt · Origin: {origin or 'unknown'}"
+                    )
+                else:
+                    severity = SeverityLevel.info
+                    title = f"{callsign_str}"
+                    body = (
+                        f"Alt {alt_ft:,}ft · {speed_kt}kt"
+                        + (f" · {origin}" if origin else "")
+                        + (f" · Squawk {squawk_str}" if squawk_str else "")
+                    )
 
                 events.append(GeoEvent(
-                    id=f"opensky_{icao24}_{squawk}_{last_contact}",
+                    id=f"opensky_{icao24}_{last_contact or now_iso}",
                     source_id=self.source_id,
                     category=self.category,
                     severity=severity,
-                    title=f"SQUAWK {squawk} — {label}" + (f" [{callsign}]" if callsign else ""),
-                    body=(
-                        f"Aircraft {icao24.upper()} squawking {squawk} at "
-                        f"{(geo_alt or baro_alt or 0):.0f}m altitude"
-                    ),
+                    title=title,
+                    body=body,
                     lat=float(lat),
                     lng=float(lng),
                     event_time=now_iso,
                     metadata={
                         "icao24": icao24,
-                        "callsign": callsign,
-                        "squawk": squawk,
-                        "altitude_m": geo_alt or baro_alt,
-                        "velocity_ms": velocity,
+                        "callsign": callsign_str,
                         "origin_country": origin,
+                        "baro_altitude": baro_alt,
+                        "geo_altitude": geo_alt,
+                        "velocity": velocity,
+                        "true_track": heading,
+                        "vertical_rate": vert_rate,
+                        "squawk": squawk_str or None,
+                        "on_ground": False,
+                        "position_source": position_source,
                     },
                 ))
             except Exception:
