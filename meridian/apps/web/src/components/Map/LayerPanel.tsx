@@ -9,6 +9,14 @@ export function LayerPanel() {
   );
   const [search, setSearch] = useState("");
 
+  const filteredLayers = useMemo(() => {
+    if (!search.trim()) return ALL_LAYERS;
+    const q = search.toLowerCase();
+    return ALL_LAYERS.filter(
+      (l) => l.label.toLowerCase().includes(q) || (l.description ?? "").toLowerCase().includes(q)
+    );
+  }, [search]);
+
   if (!isLayerPanelOpen) return null;
 
   const toggleGroup = (g: LayerGroup) =>
@@ -18,14 +26,6 @@ export function LayerPanel() {
       else next.add(g);
       return next;
     });
-
-  const filteredLayers = useMemo(() => {
-    if (!search.trim()) return ALL_LAYERS;
-    const q = search.toLowerCase();
-    return ALL_LAYERS.filter(
-      (l) => l.label.toLowerCase().includes(q) || (l.description ?? "").toLowerCase().includes(q)
-    );
-  }, [search]);
 
   const groupedLayers = filteredLayers.reduce<Partial<Record<LayerGroup, typeof ALL_LAYERS>>>(
     (acc, layer) => {
