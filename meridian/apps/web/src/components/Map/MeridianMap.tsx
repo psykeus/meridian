@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import maplibregl from "maplibre-gl";
 import { useEventStore } from "@/stores/useEventStore";
 import { useFilteredEvents } from "@/stores/useFilteredEvents";
@@ -23,11 +23,15 @@ export function MeridianMap() {
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
   const activeLayers = useLayoutStore((s) => s.activeLayers);
 
-  const activeSourceIds = new Set(
-    ALL_LAYERS.filter((l) => activeLayers.has(l.id)).flatMap((l) => l.sourceIds)
+  const activeSourceIds = useMemo(
+    () => new Set(ALL_LAYERS.filter((l) => activeLayers.has(l.id)).flatMap((l) => l.sourceIds)),
+    [activeLayers]
   );
 
-  const events = allEvents.filter((e) => activeSourceIds.has(e.source_id));
+  const events = useMemo(
+    () => allEvents.filter((e) => activeSourceIds.has(e.source_id)),
+    [allEvents, activeSourceIds]
+  );
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
