@@ -6,6 +6,8 @@ import "react-resizable/css/styles.css";
 
 import { MeridianMap } from "@/components/Map/MeridianMap";
 import { LayerPanel } from "@/components/Map/LayerPanel";
+import { TimeScrubber } from "@/components/Map/TimeScrubber";
+import { useReplayStore } from "@/stores/useReplayStore";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
@@ -22,6 +24,10 @@ const ROW_HEIGHT = 30;
 export function DashboardPage() {
   const { activeDeckId, currentLayout, updateLayout } = useLayoutStore();
   const deck = useMemo(() => getDeck(activeDeckId), [activeDeckId]);
+  const fetchReplay = useReplayStore((s) => s.fetchReplay);
+  const setLive     = useReplayStore((s) => s.setLive);
+  const replayMode  = useReplayStore((s) => s.mode);
+  const isLoading   = useReplayStore((s) => s.isLoading);
 
   const onLayoutChange = useCallback(
     (layout: Layout[]) => updateLayout(layout),
@@ -33,6 +39,27 @@ export function DashboardPage() {
       <div style={{ flex: "0 0 55%", position: "relative", minHeight: 0 }}>
         <MeridianMap />
         <LayerPanel />
+        <TimeScrubber onReplay={fetchReplay} onLive={setLive} />
+        {isLoading && (
+          <div style={{
+            position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+            background: "rgba(10,14,26,.85)", border: "1px solid var(--border)",
+            borderRadius: 6, padding: "10px 20px", fontSize: 11, color: "var(--text-muted)",
+            zIndex: 300, pointerEvents: "none",
+          }}>
+            Loading historical data…
+          </div>
+        )}
+        {replayMode === "replay" && !isLoading && (
+          <div style={{
+            position: "absolute", top: 8, right: 48, zIndex: 10,
+            background: "rgba(255,152,0,.15)", border: "1px solid var(--orange-warning)",
+            borderRadius: 4, padding: "3px 10px", fontSize: 10, fontWeight: 700,
+            color: "var(--orange-warning)", pointerEvents: "none",
+          }}>
+            REPLAY MODE
+          </div>
+        )}
       </div>
 
       <div style={{ flex: "1 1 45%", overflowY: "auto", background: "var(--bg-app)" }}>
