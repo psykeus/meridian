@@ -171,19 +171,19 @@ export function MeridianMap() {
       display: flex; align-items: center; justify-content: center;
       font-size: ${Math.round(size * 0.52)}px;
       cursor: pointer;
-      transition: transform 120ms;
+      transition: scale 120ms;
       animation: ${anim};
     `;
     el.textContent = icon;
     el.title = `[${event.severity.toUpperCase()}] ${event.title}`;
 
     el.addEventListener("mouseenter", () => {
-      el.style.transform = "scale(1.45)";
+      el.style.scale = "1.45";
       el.style.boxShadow = `0 0 0 4px ${color}55`;
       el.style.animation = "none";
     });
     el.addEventListener("mouseleave", () => {
-      el.style.transform = "";
+      el.style.scale = "";
       el.style.boxShadow = "";
       el.style.animation = anim;
     });
