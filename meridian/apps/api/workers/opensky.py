@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from .base import FeedWorker
 from models.geo_event import GeoEvent, FeedCategory, SeverityLevel
-from core.config import get_settings
+from core.credential_store import get_credential
 
 # ── Emergency squawk classification ──────────────────────────────────────────
 _EMERGENCY_SQUAWKS = {"7700", "7600", "7500"}
@@ -57,8 +57,9 @@ class OpenSkyWorker(FeedWorker):
     # ── Token management ──────────────────────────────────────────────────────
 
     async def _get_bearer_token(self, client: httpx.AsyncClient) -> Optional[str]:
-        s = get_settings()
-        if not (s.opensky_client_id and s.opensky_client_secret):
+        client_id = get_credential("OPENSKY_CLIENT_ID")
+        client_secret = get_credential("OPENSKY_CLIENT_SECRET")
+        if not (client_id and client_secret):
             return None
         if self._token and time.monotonic() < self._token_expires_at - 30:
             return self._token
@@ -67,8 +68,8 @@ class OpenSkyWorker(FeedWorker):
                 _TOKEN_URL,
                 data={
                     "grant_type": "client_credentials",
-                    "client_id": s.opensky_client_id,
-                    "client_secret": s.opensky_client_secret,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=10,
@@ -85,9 +86,10 @@ class OpenSkyWorker(FeedWorker):
     def _build_auth(self, token: Optional[str]) -> dict:
         if token:
             return {"headers": {"Authorization": f"Bearer {token}"}}
-        s = get_settings()
-        if s.opensky_username and s.opensky_password:
-            return {"auth": (s.opensky_username, s.opensky_password)}
+        username = get_credential("OPENSKY_USERNAME")
+        password = get_credential("OPENSKY_PASSWORD")
+        if username and password:
+            return {"auth": (username, password)}
         return {}
 
     # ── Main fetch ────────────────────────────────────────────────────────────

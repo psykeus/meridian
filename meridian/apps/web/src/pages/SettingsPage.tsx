@@ -271,25 +271,58 @@ const CAT_COLOR: Record<string, string> = {
 function DataSourcesTab() {
   const [filter, setFilter] = useState<string>("All");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [savedKeys, setSavedKeys] = useState<Record<string, string>>(() => {
+  // Local display values (what the user typed) — never sent to server as-is
+  const [inputValues, setInputValues] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem("meridian_source_keys") ?? "{}"); }
     catch { return {}; }
   });
+  // Keys confirmed configured on the backend
+  const [configuredKeys, setConfiguredKeys] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<Record<string, "saved" | "error">>({});
+
+  useEffect(() => {
+    fetch("/api/v1/credentials")
+      .then((r) => r.ok ? r.json() : { configured: [] })
+      .then((d) => setConfiguredKeys(new Set(d.configured ?? [])))
+      .catch(() => {});
+  }, []);
 
   const categories = ["All", ...CAT_ORDER];
   const filtered = DATA_SOURCES.filter((ds) => filter === "All" || ds.category === filter);
   const configured = DATA_SOURCES.filter((ds) =>
-    ds.envVars.length === 0 || ds.envVars.every((v) => savedKeys[v.key])
+    ds.envVars.length === 0 || ds.envVars.every((v) => configuredKeys.has(v.key))
   ).length;
 
-  const saveKey = (varKey: string, value: string) => {
-    const next = { ...savedKeys, [varKey]: value };
-    setSavedKeys(next);
-    localStorage.setItem("meridian_source_keys", JSON.stringify(next));
+  const saveCredentials = async (ds: typeof DATA_SOURCES[0]) => {
+    const payload: Record<string, string> = {};
+    for (const v of ds.envVars) {
+      const val = inputValues[v.key] ?? "";
+      if (val) payload[v.key] = val;
+    }
+    if (!Object.keys(payload).length) return;
+    setSaving(ds.id);
+    try {
+      const r = await fetch("/api/v1/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (r.ok) {
+        const saved = Object.keys(payload);
+        setConfiguredKeys((prev) => new Set([...prev, ...saved]));
+        setSaveStatus((p) => ({ ...p, [ds.id]: "saved" }));
+        localStorage.setItem("meridian_source_keys", JSON.stringify(inputValues));
+        setTimeout(() => setSaveStatus((p) => { const n = { ...p }; delete n[ds.id]; return n; }), 2500);
+      } else {
+        setSaveStatus((p) => ({ ...p, [ds.id]: "error" }));
+      }
+    } catch {
+      setSaveStatus((p) => ({ ...p, [ds.id]: "error" }));
+    } finally {
+      setSaving(null);
+    }
   };
-
-  const envSnippet = (ds: DataSourceConfig) =>
-    ds.envVars.map((v) => `${v.key}=${savedKeys[v.key] ?? "your_key_here"}`).join("\n");
 
   return (
     <div>
@@ -297,7 +330,7 @@ function DataSourcesTab() {
         <div>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>Data Sources</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0 }}>
-            {configured} of {DATA_SOURCES.length} sources configured. Keys are stored locally and added to your <code style={{ background: "var(--bg-card)", padding: "1px 4px", borderRadius: 3 }}>.env</code> file for the backend workers.
+            {configured} of {DATA_SOURCES.length} sources configured. Credentials are saved to the backend and used immediately by workers — no restart required.
           </p>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -319,7 +352,7 @@ function DataSourcesTab() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {filtered.map((ds) => {
-          const isConfigured = ds.envVars.length === 0 || ds.envVars.every((v) => savedKeys[v.key]);
+          const isConfigured = ds.envVars.length === 0 || ds.envVars.every((v) => configuredKeys.has(v.key));
           const isOpen = expanded === ds.id;
           return (
             <div key={ds.id} style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
@@ -376,23 +409,25 @@ function DataSourcesTab() {
                           <code style={{ fontSize: 10, color: "var(--text-muted)", background: "var(--bg-card)", padding: "2px 6px", borderRadius: 3, width: 200, flexShrink: 0 }}>{v.key}</code>
                           <input
                             type={v.secret ? "password" : "text"}
-                            placeholder={`Enter ${v.label}…`}
-                            value={savedKeys[v.key] ?? ""}
-                            onChange={(e) => saveKey(v.key, e.target.value)}
-                            style={{ flex: 1, background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 4,
+                            placeholder={configuredKeys.has(v.key) ? "••••••••••••" : `Enter ${v.label}…`}
+                            value={inputValues[v.key] ?? ""}
+                            onChange={(e) => setInputValues((p) => ({ ...p, [v.key]: e.target.value }))}
+                            style={{ flex: 1, background: "var(--bg-app)", border: `1px solid ${configuredKeys.has(v.key) ? "var(--green-primary)" : "var(--border)"}`, borderRadius: 4,
                               color: "var(--text-primary)", fontSize: 11, padding: "4px 8px", outline: "none" }}
                           />
                         </div>
                       ))}
 
-                      <div style={{ marginTop: 8 }}>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Copy to <code style={{ background: "var(--bg-card)", padding: "1px 4px", borderRadius: 3 }}>apps/api/.env</code>:</div>
-                        <div style={{ position: "relative" }}>
-                          <pre style={{ fontSize: 10, background: "var(--bg-app)", border: "1px solid var(--border)", borderRadius: 4, padding: "8px 10px", margin: 0, color: "var(--green-primary)", overflowX: "auto" }}>{envSnippet(ds)}</pre>
-                          <button onClick={() => navigator.clipboard.writeText(envSnippet(ds))}
-                            style={{ position: "absolute", top: 6, right: 6, padding: "2px 8px", borderRadius: 3,
-                              background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-muted)", fontSize: 9, cursor: "pointer" }}>Copy</button>
-                        </div>
+                      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                        <button
+                          onClick={() => saveCredentials(ds)}
+                          disabled={saving === ds.id}
+                          style={{ padding: "5px 16px", borderRadius: 4, background: "var(--green-primary)", color: "var(--bg-app)",
+                            fontSize: 11, fontWeight: 700, border: "none", cursor: saving === ds.id ? "wait" : "pointer", opacity: saving === ds.id ? 0.7 : 1 }}>
+                          {saving === ds.id ? "Saving…" : "Save Credentials"}
+                        </button>
+                        {saveStatus[ds.id] === "saved" && <span style={{ fontSize: 11, color: "var(--green-primary)" }}>✓ Saved — worker will use these on next cycle</span>}
+                        {saveStatus[ds.id] === "error" && <span style={{ fontSize: 11, color: "#ff5252" }}>✗ Save failed</span>}
                       </div>
                     </div>
                   )}
