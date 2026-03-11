@@ -214,8 +214,9 @@ def get_scheduler() -> AsyncIOScheduler:
 
 
 async def run_all_workers_once() -> None:
-    """Run every worker immediately on startup to pre-populate data."""
-    tasks = [_run_worker(w) for w in WORKERS]
+    """Run eligible workers immediately on startup to pre-populate data.
+    Workers with run_on_startup=False are skipped to avoid rate-limiting."""
+    tasks = [_run_worker(w) for w in WORKERS if w.run_on_startup]
     await asyncio.gather(*tasks, return_exceptions=True)
 
 

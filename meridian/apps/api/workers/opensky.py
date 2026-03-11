@@ -47,6 +47,7 @@ class OpenSkyWorker(FeedWorker):
     display_name = "OpenSky Aircraft Tracking"
     category = FeedCategory.aviation
     refresh_interval = 60  # seconds — OpenSky anonymous: 10 req/min; authenticated: higher
+    run_on_startup = False  # avoid anonymous rate-limit (429) on every API restart
 
     def __init__(self) -> None:
         super().__init__()

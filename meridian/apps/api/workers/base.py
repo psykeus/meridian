@@ -61,6 +61,7 @@ class FeedWorker(ABC):
     display_name: str
     category: FeedCategory
     refresh_interval: int = 300
+    run_on_startup: bool = True  # set False for rate-sensitive live-tracking workers
 
     def _get_state(self, key: str, default: object = None) -> object:
         return getattr(self, f"_ws_{key}", default)
