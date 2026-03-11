@@ -3,11 +3,9 @@ import { SEVERITY_COLOR, SEVERITY_BG, CATEGORY_ICON, timeAgo } from "@/lib/utils
 import type { GeoEvent } from "@/types";
 
 export function ContextDrawer() {
-  const { selectedEvent, isDrawerOpen, closeDrawer } = useEventStore((s) => ({
-    selectedEvent: s.selectedEvent,
-    isDrawerOpen: s.isDrawerOpen,
-    closeDrawer: s.closeDrawer,
-  }));
+  const selectedEvent = useEventStore((s) => s.selectedEvent);
+  const isDrawerOpen = useEventStore((s) => s.isDrawerOpen);
+  const closeDrawer = useEventStore((s) => s.closeDrawer);
 
   return (
     <div

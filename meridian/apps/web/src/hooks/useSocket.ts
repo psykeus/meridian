@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useEventStore } from "@/stores/useEventStore";
 import type { WebSocketMessage } from "@/types";
 
-const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000";
+const WS_URL = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
 const RECONNECT_DELAY_MS = 3000;
 
 export function useEventSocket() {
