@@ -221,7 +221,7 @@ function OrgSettings() {
     setCreating(true);
     try {
       const r = await fetch("/api/v1/orgs", { method: "POST", headers: authHeaders(), body: JSON.stringify({ name: name.trim(), slug: slug.trim() }) });
-      if (r.ok) { setOrgs((p) => [...p, await r.json()]); setName(""); setSlug(""); }
+      if (r.ok) { const org = await r.json(); setOrgs((p) => [...p, org]); setName(""); setSlug(""); }
     } finally { setCreating(false); }
   };
 

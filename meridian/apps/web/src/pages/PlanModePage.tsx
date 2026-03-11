@@ -408,7 +408,7 @@ function MembersTab({ roomId }: { roomId: number }) {
     setAdding(true);
     try {
       const r = await fetch(`/api/v1/plan-rooms/${roomId}/members/${userId.trim()}`, { method: "POST", headers: authHeaders() });
-      if (r.ok) { setMembers((p) => [...p, await r.json()]); setUserId(""); }
+      if (r.ok) { const member = await r.json(); setMembers((p) => [...p, member]); setUserId(""); }
     } finally { setAdding(false); }
   };
 

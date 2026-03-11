@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   db:
-    image: timescale/timescaledb-ha:pg16-latest
+    image: postgres:16-alpine
     container_name: meridian_db
     restart: unless-stopped
     environment:
@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meridian}
       POSTGRES_DB: ${POSTGRES_DB:-meridian}
     volumes:
-      - db_data:/home/postgres/pgdata/data
+      - db_data:/var/lib/postgresql/data
       - ./infra/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
     ports:
       - "5432:5432"
@@ -28,7 +28,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
