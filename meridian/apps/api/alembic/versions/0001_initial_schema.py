@@ -247,10 +247,8 @@ def upgrade() -> None:
         "plan_room_members", "annotations", "timeline_entries", "tasks",
         "watch_list_entities", "intel_notes",
     ]:
-        op.execute(
-            f"CREATE SEQUENCE IF NOT EXISTS {table}_id_seq OWNED BY {table}.id;"
-            f"ALTER TABLE {table} ALTER COLUMN id SET DEFAULT nextval('{table}_id_seq');"
-        )
+        op.execute(f"CREATE SEQUENCE IF NOT EXISTS {table}_id_seq OWNED BY {table}.id")
+        op.execute(f"ALTER TABLE {table} ALTER COLUMN id SET DEFAULT nextval('{table}_id_seq')")
 
 
 def downgrade() -> None:

@@ -133,10 +133,8 @@ def upgrade() -> None:
     # ── sequences ──────────────────────────────────────────────────────────────
     for table in ["organizations", "organization_members", "api_tokens",
                   "audit_logs", "annotation_comments", "shareable_links"]:
-        op.execute(
-            f"CREATE SEQUENCE IF NOT EXISTS {table}_id_seq OWNED BY {table}.id;"
-            f"ALTER TABLE {table} ALTER COLUMN id SET DEFAULT nextval('{table}_id_seq');"
-        )
+        op.execute(f"CREATE SEQUENCE IF NOT EXISTS {table}_id_seq OWNED BY {table}.id")
+        op.execute(f"ALTER TABLE {table} ALTER COLUMN id SET DEFAULT nextval('{table}_id_seq')")
 
 
 def downgrade() -> None:
