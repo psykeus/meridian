@@ -75,9 +75,11 @@ export const useAlertStore = create<AlertStore>((set, get) => ({
     set((state) => ({ isNotificationPanelOpen: !state.isNotificationPanelOpen })),
 
   fetchNotifications: async () => {
+    const token = localStorage.getItem("access_token");
+    if (!token) return;
     try {
       const resp = await fetch("/api/v1/alerts/notifications?limit=50", {
-        headers: { Authorization: `Bearer ${localStorage.getItem("access_token") ?? ""}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (resp.ok) {
         const data = await resp.json();
