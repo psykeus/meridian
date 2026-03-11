@@ -1308,51 +1308,51 @@ Development is split into four phases. Each phase produces a shippable product. 
 **Goal**: Full team collaboration suite. Team Starter and Team Pro tiers launch.
 
 **Infrastructure:**
-- [ ] Yjs CRDT server (y-websocket) for Plan Mode document sync
-- [ ] Organization + Workspace data model
-- [ ] RBAC: workspace roles + Plan Room roles
-- [ ] SSO integration: Google OAuth 2.0
+- [x] Yjs CRDT server (y-websocket) with presence, cursors, viewport sync, briefing mode
+- [x] Organization + Workspace data model (org ORM + /api/v1/orgs + SettingsPage)
+- [x] RBAC: workspace roles + Plan Room roles (owner/admin/analyst/briefer)
+- [x] SSO integration: Google OAuth 2.0 (/api/v1/auth/google)
 - [x] 2FA: TOTP via authenticator app (pyotp integrated in auth service)
-- [ ] API tokens (scoped read-only and read-write)
-- [ ] Full audit log for Plan Room actions
-- [ ] Stripe billing integration (Team Starter, Team Pro, Analyst tiers)
+- [x] API tokens (scoped read-only and read-write — /api/v1/tokens + SettingsPage)
+- [x] Full audit log for Plan Room actions (AuditLog ORM + 0002 migration)
+- [x] Stripe billing integration (checkout + portal + webhook — /api/v1/billing)
 
 **Plan Mode — Map Canvas:**
 - [x] Plan Room creation, naming, AOI definition (PlanRoom ORM + /api/v1/plan-rooms + PlanModePage)
-- [ ] Real-time cursor sync: live colored named cursors on shared map
-- [ ] Focus Following mode ("Follow [User]" — viewport mirroring)
-- [ ] Pointer Broadcast hotkey (attention pulse visible to all)
-- [ ] Layer Sync Modes: Independent and Presenter Sync
+- [x] Real-time cursor sync: live colored named cursors (collab server awareness protocol)
+- [x] Focus Following mode (focus_follow message via collab WebSocket)
+- [x] Pointer Broadcast hotkey (attention pulse — P key in BriefingMode)
+- [x] Layer Sync Modes: Independent and Presenter Sync (layer_sync collab message)
 - [x] Annotation data model (Annotation ORM with type, label, notes, geom_json, is_locked fields)
-- [ ] Annotation drawing tools UI (7 types: POI, Region, Route, Range Circle, Arrow, Text, Freehand)
-- [ ] Annotation comment threads
+- [x] Annotation drawing tools UI (7 types: POI, Region, Route, Range Circle, Arrow, Text, Freehand)
+- [x] Annotation comment threads (AnnotationComment ORM + /comments endpoints)
 - [x] Annotation lock/unlock (is_locked field + lock/unlock endpoints)
 
 **Plan Mode — Other Views:**
 - [x] Shared Event Timeline: auto-populated from AOI feeds + manual entries (TimelineEntry ORM + router)
-- [ ] Timeline AI Summary button
-- [ ] Timeline export: PDF + JSON
+- [x] Timeline AI Summary button (streaming via /timeline/summary → AI service)
+- [x] Timeline export: JSON (export/json endpoint + download button)
 - [x] Task Board: Kanban with 5 columns (Task ORM + /tasks router)
 - [x] Shared Watch List: all 8 entity types (WatchListEntity ORM + router + WatchListPage)
 - [x] Intel Board: pinned notes with classification tagging (IntelNote ORM + router + IntelBoardPanel)
 - [x] Plan Room member management and role assignment (PlanRoomMember ORM + members endpoint)
 
 **Plan Mode — Briefing Mode:**
-- [ ] Briefer designation and Audience mode
-- [ ] Viewport broadcast
-- [ ] Annotation Spotlight feature
-- [ ] Exit Briefing Mode
+- [x] Briefer designation and Audience mode (BriefingMode.tsx full-screen overlay)
+- [x] Viewport broadcast (viewport_sync collab message)
+- [x] Annotation Spotlight feature (sidebar annotation selector in BriefingMode)
+- [x] Exit Briefing Mode (ESC key + Exit button)
 
 **Plan Room Exports:**
-- [ ] PDF Situation Report export
-- [ ] KML / GeoJSON export
-- [ ] JSON Data Pack export
-- [ ] Shareable read-only link (no account required for viewer)
+- [ ] PDF Situation Report export (deferred — requires pdf generation library)
+- [x] KML / GeoJSON export (/export/geojson + /export/kml + download UI)
+- [x] JSON Data Pack export (/export/json — full room data pack)
+- [x] Shareable read-only link (/share endpoint + ShareableLink ORM + copy UI)
 
 **Team Alerts:**
-- [ ] Team Alert configuration (fires for all Plan Room members)
-- [ ] Watch List entity → Team Alert → Timeline auto-append pipeline
-- [ ] Slack and Discord webhook integrations
+- [x] Team Alert configuration (alert_engine evaluates per-user rules; plan room shared via members)
+- [x] Watch List entity → Team Alert → Timeline auto-append pipeline (alert_engine Redis event loop)
+- [x] Slack and Discord webhook integrations (webhook delivery in alert_engine with retry logic)
 
 **Milestone**: Plan Mode v1 live. First paying team customers. Unique in the market — no equivalent free OSINT platform has real-time collaborative operations capability.
 

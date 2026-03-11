@@ -14,6 +14,8 @@ from models.user import User  # noqa: F401
 from models.alert import AlertRule, AlertNotification  # noqa: F401
 from models.plan_room import PlanRoom, PlanRoomMember, Annotation, TimelineEntry, Task  # noqa: F401
 from models.watch_list import WatchListEntity, IntelNote  # noqa: F401
+from models.org import Organization, OrganizationMember, APIToken, AuditLog  # noqa: F401
+from models.collab import AnnotationComment, ShareableLink  # noqa: F401
 from core.database import Base
 
 config = context.config

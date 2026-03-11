@@ -51,12 +51,7 @@ export function TopNav() {
 
         <NotificationCenter />
 
-        <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-          style={{ background: "var(--green-primary)", color: "var(--bg-app)" }}
-        >
-          M
-        </div>
+        <SettingsLink />
       </div>
     </header>
   );
@@ -159,5 +154,22 @@ function FeedHealthIndicator() {
       <div className="live-dot healthy" />
       <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>15 feeds live</span>
     </div>
+  );
+}
+
+function SettingsLink() {
+  return (
+    <a
+      href="/settings"
+      title="Settings"
+      style={{
+        width: 28, height: 28, borderRadius: "50%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 13, background: "var(--green-primary)", color: "var(--bg-app)",
+        textDecoration: "none", fontWeight: 700, cursor: "pointer",
+      }}
+    >
+      M
+    </a>
   );
 }

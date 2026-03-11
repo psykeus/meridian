@@ -6,6 +6,7 @@ import { AlertRulesPage } from "@/pages/AlertRulesPage";
 import { PlanModePage } from "@/pages/PlanModePage";
 import { WatchListPage } from "@/pages/WatchListPage";
 import { SitrepPage } from "@/pages/SitrepPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { useEventSocket } from "@/hooks/useSocket";
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="plan" element={<PlanModePage />} />
         <Route path="watch" element={<WatchListPage />} />
         <Route path="sitrep" element={<SitrepPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     sendgrid_api_key: str = ""
     email_from: str = "noreply@meridian.local"
 
+    # Stripe
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""
+
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
+    # App
+    app_url: str = "http://localhost:5173"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",")]
