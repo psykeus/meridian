@@ -5,7 +5,7 @@ import httpx
 
 from .base import FeedWorker
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
-from workers._country_coords import COUNTRY_COORDS
+from ._country_coords import COUNTRY_COORDS
 
 
 class OONIWorker(FeedWorker):

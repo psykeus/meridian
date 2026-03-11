@@ -44,7 +44,7 @@ class OpenSanctionsWorker(FeedWorker):
 
             lat, lng = _LAT, _LNG
             if countries:
-                from workers._country_coords import COUNTRY_COORDS
+                from ._country_coords import COUNTRY_COORDS
                 cc = countries[0].lower() if countries else ""
                 coords = COUNTRY_COORDS.get(cc)
                 if coords:

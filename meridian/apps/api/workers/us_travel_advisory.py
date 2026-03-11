@@ -5,7 +5,7 @@ import httpx
 
 from .base import FeedWorker
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
-from workers._country_coords import COUNTRY_COORDS
+from ._country_coords import COUNTRY_COORDS
 
 _LEVEL_SEVERITY = {1: SeverityLevel.low, 2: SeverityLevel.low, 3: SeverityLevel.medium, 4: SeverityLevel.high}
 

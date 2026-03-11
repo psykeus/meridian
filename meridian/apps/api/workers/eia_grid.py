@@ -12,7 +12,7 @@ _GRID_LAT, _GRID_LNG = 38.9072, -77.0369
 class EIAGridWorker(FeedWorker):
     source_id = "eia_grid"
     display_name = "EIA Grid Monitor — US Power Grid"
-    category = FeedCategory.cyber
+    category = FeedCategory.energy
     refresh_interval = 3600  # 1 hour
 
     _BASE = "https://api.eia.gov/v2"

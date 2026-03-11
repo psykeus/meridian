@@ -14,7 +14,7 @@ _LAT, _LNG = 29.76, -95.37  # Houston
 class BakerHughesWorker(FeedWorker):
     source_id = "baker_hughes"
     display_name = "Baker Hughes — Rig Count"
-    category = FeedCategory.financial
+    category = FeedCategory.finance
     refresh_interval = 604800  # weekly
 
     _URL = "https://rigcount.bakerhughes.com/static-files/north-america-rotary-rig-count-current"

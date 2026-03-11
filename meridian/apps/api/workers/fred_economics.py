@@ -20,7 +20,7 @@ SERIES = [
 class FREDWorker(FeedWorker):
     source_id = "fred"
     display_name = "FRED — US Macroeconomic Indicators"
-    category = FeedCategory.financial
+    category = FeedCategory.finance
     refresh_interval = 86400  # daily
 
     _BASE = "https://api.stlouisfed.org/fred/series/observations"

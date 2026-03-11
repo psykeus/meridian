@@ -14,7 +14,7 @@ TOP_IDS = "bitcoin,ethereum,tether,binancecoin,solana,ripple,usd-coin,steth,doge
 class CoinGeckoWorker(FeedWorker):
     source_id = "coingecko"
     display_name = "CoinGecko — Cryptocurrency Markets"
-    category = FeedCategory.financial
+    category = FeedCategory.finance
     refresh_interval = 60
 
     _URL = "https://api.coingecko.com/api/v3/coins/markets"

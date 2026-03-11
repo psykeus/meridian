@@ -12,7 +12,7 @@ _EU_LAT, _EU_LNG = 50.8503, 4.3517  # Brussels
 class ENTSOEWorker(FeedWorker):
     source_id = "entso_e"
     display_name = "ENTSO-E — EU Energy Balance"
-    category = FeedCategory.cyber
+    category = FeedCategory.energy
     refresh_interval = 3600  # 1 hour
 
     async def fetch(self) -> list[GeoEvent]:
