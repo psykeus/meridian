@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2"
 
     # Feed API keys (all optional)
+    # OpenSky Network — OAuth2 Client Credentials (new, preferred)
+    opensky_client_id: str = ""
+    opensky_client_secret: str = ""
+    # OpenSky legacy Basic Auth (deprecated — kept for transition period only)
+    opensky_username: str = ""
+    opensky_password: str = ""
+
     acled_api_key: str = ""
     acled_email: str = ""
     alpha_vantage_api_key: str = ""
