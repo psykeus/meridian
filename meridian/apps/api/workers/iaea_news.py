@@ -4,7 +4,10 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from workers.base import FeedWorker
-from models.geo_event import GeoEvent
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
+
+# IAEA HQ, Vienna — default coords for nuclear news without geographic specificity
+_IAEA_LAT, _IAEA_LNG = 48.2352, 16.4136
 
 _NUCLEAR_KEYWORDS = [
     "nuclear", "radiation", "radioactive", "reactor", "safeguards", "uranium", "plutonium",
@@ -15,7 +18,7 @@ _NUCLEAR_KEYWORDS = [
 class IAEANewsWorker(FeedWorker):
     source_id = "iaea_news"
     display_name = "IAEA Nuclear News"
-    category = "nuclear"
+    category = FeedCategory.nuclear
     refresh_interval = 3600
     _rss_url = "https://www.iaea.org/feeds/topstories.xml"
 
@@ -59,10 +62,10 @@ class IAEANewsWorker(FeedWorker):
                 source_id=self.source_id,
                 title=title[:300],
                 body=desc[:600],
-                category="nuclear",
-                severity="medium",
-                lat=0.0,
-                lng=0.0,
+                category=FeedCategory.nuclear,
+                severity=SeverityLevel.medium,
+                lat=_IAEA_LAT,
+                lng=_IAEA_LNG,
                 url=link_el.text.strip() if link_el is not None and link_el.text else None,
                 event_time=ts,
             ))

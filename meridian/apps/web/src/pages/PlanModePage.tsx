@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { usePlanStore, type PlanRoom, type Task } from "@/stores/usePlanStore";
 import { usePlanTrackingStore } from "@/stores/usePlanTrackingStore";
 import { AnnotationPanel } from "@/components/PlanMode/AnnotationPanel";
 import { BriefingMode } from "@/components/PlanMode/BriefingMode";
 import { timeAgo } from "@/lib/utils";
 import { SOURCE_TO_DATASOURCE } from "@/config/dataSources";
+import { useCollabSocket, useCollabStore, getCollabIdentity } from "@/hooks/useCollabSocket";
+import { useLayoutStore } from "@/stores/useLayoutStore";
+import { ALL_LAYERS } from "@/config/layers";
 
 const TASK_STATUSES = ["to_monitor", "assigned", "active_watch", "escalated", "completed"];
 const STATUS_LABEL: Record<string, string> = {
@@ -92,6 +95,18 @@ function RoomDetail({ room }: { room: PlanRoom }) {
   const [showExport, setShowExport] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
 
+  // ── Collab WebSocket ───────────────────────────────────────────────────
+  const collabIdentity = useMemo(() => getCollabIdentity(), []);
+  useCollabSocket({
+    roomId: room.id,
+    userId: collabIdentity.userId,
+    userName: collabIdentity.email,
+  });
+  const collabConnected = useCollabStore((s) => s.connected);
+  const remoteUsers     = useCollabStore((s) => s.remoteUsers);
+  const followingUserId = useCollabStore((s) => s.followingUserId);
+  const syncMode        = useCollabStore((s) => s.syncMode);
+
   const TABS: { id: RoomTab; label: string }[] = [
     { id: "tasks", label: "Tasks" },
     { id: "timeline", label: "Timeline" },
@@ -167,6 +182,68 @@ function RoomDetail({ room }: { room: PlanRoom }) {
           <button onClick={() => setShareUrl(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--text-muted)" }}>✕</button>
         </div>
       )}
+
+      {/* ── Online users + sync mode ─────────────────────────────────────── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 16px", borderBottom: "1px solid var(--border)", background: "var(--bg-card)", flexShrink: 0 }}>
+        <span style={{ width: 6, height: 6, borderRadius: "50%", background: collabConnected ? "var(--green-primary)" : "#555", flexShrink: 0 }} />
+        <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>
+          {collabConnected ? `Online (${remoteUsers.length + 1})` : "Offline"}
+        </span>
+
+        {remoteUsers.map((u) => (
+          <button
+            key={u.userId}
+            onClick={() => {
+              const s = useCollabStore.getState();
+              if (followingUserId === u.userId) {
+                s.setFollowing(null);
+                s._sendFocusFollow?.(null);
+              } else {
+                s.setFollowing(u.userId);
+                s._sendFocusFollow?.(u.userId);
+              }
+            }}
+            title={followingUserId === u.userId ? `Unfollow ${u.name}` : `Follow ${u.name}`}
+            style={{
+              display: "flex", alignItems: "center", gap: 4,
+              padding: "2px 6px", borderRadius: 3, fontSize: 10, cursor: "pointer",
+              background: followingUserId === u.userId ? `${u.color}22` : "transparent",
+              border: followingUserId === u.userId ? `1px solid ${u.color}` : "1px solid var(--border)",
+              color: followingUserId === u.userId ? u.color : "var(--text-muted)",
+            }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: u.color, display: "inline-block" }} />
+            {u.name.split("@")[0]}
+            {followingUserId === u.userId && <span style={{ fontSize: 8 }}>👁</span>}
+          </button>
+        ))}
+
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 9, color: "var(--text-muted)" }}>Sync:</span>
+          <button
+            onClick={() => {
+              const next = syncMode === "independent" ? "presenter" : "independent";
+              useCollabStore.getState().setSyncMode(next);
+              if (next === "presenter") {
+                // Broadcast current layers to sync everyone
+                const layers = ALL_LAYERS.map((l) => ({
+                  id: l.id,
+                  enabled: useLayoutStore.getState().activeLayers.has(l.id),
+                }));
+                useCollabStore.getState()._sendLayerSync?.(layers);
+              }
+            }}
+            style={{
+              padding: "2px 8px", borderRadius: 3, fontSize: 9, fontWeight: 700, cursor: "pointer",
+              background: syncMode === "presenter" ? "rgba(255,68,68,0.15)" : "transparent",
+              border: syncMode === "presenter" ? "1px solid var(--red-critical)" : "1px solid var(--border)",
+              color: syncMode === "presenter" ? "var(--red-critical)" : "var(--text-muted)",
+            }}
+          >
+            {syncMode === "independent" ? "Independent" : "Presenter Sync"}
+          </button>
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 1, background: "var(--bg-card)", padding: "4px 16px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
         {TABS.map(({ id, label }) => (
@@ -260,6 +337,21 @@ function TimelinePanel({ roomId }: { roomId: number }) {
   const [body, setBody] = useState("");
   const [summary, setSummary] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(false);
+
+  const autoPopulate = async () => {
+    setAutoLoading(true);
+    try {
+      const r = await fetch(`/api/v1/plan-rooms/${roomId}/timeline/auto-populate`, {
+        method: "POST", headers: authHeaders(),
+      });
+      if (r.ok) {
+        const newEntries = await r.json();
+        for (const e of newEntries) addTimelineEntry(e);
+      }
+    } catch {}
+    finally { setAutoLoading(false); }
+  };
 
   const addEntry = async () => {
     if (!title.trim()) return;
@@ -314,6 +406,10 @@ function TimelinePanel({ roomId }: { roomId: number }) {
           <button onClick={getAISummary} disabled={summarizing || entries.length === 0}
             style={{ padding: "4px 10px", borderRadius: 4, fontSize: 11, background: "rgba(0,230,118,0.12)", border: "1px solid var(--green-primary)", color: "var(--green-primary)", cursor: "pointer" }}>
             {summarizing ? "Summarizing…" : "✦ AI Summary"}
+          </button>
+          <button onClick={autoPopulate} disabled={autoLoading}
+            style={{ padding: "4px 10px", borderRadius: 4, fontSize: 11, background: "rgba(77,166,255,0.12)", border: "1px solid var(--blue-track, #4da6ff)", color: "var(--blue-track, #4da6ff)", cursor: "pointer" }}>
+            {autoLoading ? "Scanning…" : "⊕ Auto-populate AOI"}
           </button>
           <button onClick={exportJSON} style={{ padding: "4px 10px", borderRadius: 4, fontSize: 11, background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-muted)", cursor: "pointer" }}>
             ↓ JSON

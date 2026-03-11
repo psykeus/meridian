@@ -2,13 +2,13 @@
 import httpx
 from datetime import datetime, timezone
 from workers.base import FeedWorker
-from models.geo_event import GeoEvent
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 
 
 class EMSCEarthquakesWorker(FeedWorker):
     source_id = "emsc_earthquakes"
     display_name = "EMSC Earthquakes"
-    category = "environment"
+    category = FeedCategory.environment
     refresh_interval = 300
     _api_url = "https://www.seismicportal.eu/fdsnws/event/1/query"
 
@@ -40,7 +40,7 @@ class EMSCEarthquakesWorker(FeedWorker):
             depth = float(coords[2]) if len(coords) > 2 else 0.0
             mag = props.get("mag", 0.0)
 
-            severity = "critical" if mag >= 7.0 else "high" if mag >= 6.0 else "medium" if mag >= 5.0 else "low"
+            severity = SeverityLevel.critical if mag >= 7.0 else SeverityLevel.high if mag >= 6.0 else SeverityLevel.medium if mag >= 5.0 else SeverityLevel.low
 
             time_ms = props.get("time", 0)
             try:

@@ -4,7 +4,7 @@ import httpx
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from workers.base import FeedWorker
-from models.geo_event import GeoEvent
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 
 _VOLCANO_COORDS: dict[str, tuple[float, float]] = {
     "etna": (37.73, 15.00), "stromboli": (38.79, 15.21), "vesuvius": (40.82, 14.43),
@@ -23,7 +23,7 @@ _VOLCANO_COORDS: dict[str, tuple[float, float]] = {
 class VolcanoDiscoveryWorker(FeedWorker):
     source_id = "volcano_discovery"
     display_name = "VolcanoDiscovery Activity"
-    category = "environment"
+    category = FeedCategory.environment
     refresh_interval = 1800
     _rss_url = "https://www.volcanodiscovery.com/erupting_volcanoes.rss"
 
@@ -60,7 +60,10 @@ class VolcanoDiscoveryWorker(FeedWorker):
                     lat, lng = coords
                     break
 
-            severity = "high" if any(w in title_lower for w in ["eruption", "lava", "explosion", "alert"]) else "medium"
+            if lat == 0.0 and lng == 0.0:
+                continue  # Skip volcanoes we can't place on map
+
+            severity = SeverityLevel.high if any(w in title_lower for w in ["eruption", "lava", "explosion", "alert"]) else SeverityLevel.medium
 
             event_id = hashlib.sha256(f"volcano_{link or title}".encode()).hexdigest()[:16]
 

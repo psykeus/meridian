@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useEventStore } from "@/stores/useEventStore";
 import { usePlanTrackingStore, getEntityKey } from "@/stores/usePlanTrackingStore";
 import { SEVERITY_COLOR, SEVERITY_BG, timeAgo } from "@/lib/utils";
@@ -53,8 +53,50 @@ function DrawerBody({ event }: { event: GeoEvent }) {
   const [showPlanMenu, setShowPlanMenu] = useState(false);
   const [planRooms, setPlanRooms] = useState<{ id: number; name: string }[]>([]);
   const [pinned, setPinned] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [nearbyEvents, setNearbyEvents] = useState<GeoEvent[]>([]);
 
   const { pinEntity, unpinEntity, isTracked } = usePlanTrackingStore();
+  const allEvents = useEventStore((s) => s.events);
+  const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
+
+  // Fetch nearby events when event changes
+  useEffect(() => {
+    const nearby = allEvents
+      .filter((e) => e.id !== event.id && Math.abs(e.lat - event.lat) < 2 && Math.abs(e.lng - event.lng) < 2)
+      .sort((a, b) => {
+        const distA = Math.hypot(a.lat - event.lat, a.lng - event.lng);
+        const distB = Math.hypot(b.lat - event.lat, b.lng - event.lng);
+        return distA - distB;
+      })
+      .slice(0, 5);
+    setNearbyEvents(nearby);
+  }, [event, allEvents]);
+
+  // Fetch AI summary on demand
+  const fetchAiSummary = useCallback(async () => {
+    if (aiLoading || aiSummary) return;
+    setAiLoading(true);
+    try {
+      const resp = await fetch("/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Briefly summarize this event in 2-3 sentences for a situational awareness analyst: "${event.title}" at coordinates (${event.lat.toFixed(2)}, ${event.lng.toFixed(2)}). Context: ${event.body ?? "No additional details."}`,
+          stream: false,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setAiSummary(data.response ?? data.message ?? "No summary available.");
+      }
+    } catch {
+      setAiSummary("AI summary unavailable.");
+    } finally {
+      setAiLoading(false);
+    }
+  }, [event, aiLoading, aiSummary]);
   const entityKey = getEntityKey(event);
   const isAlreadyTracked = isTracked(entityKey);
 
@@ -158,6 +200,52 @@ function DrawerBody({ event }: { event: GeoEvent }) {
           <a href={event.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--green-primary)", textDecoration: "none" }}>
             View source ↗
           </a>
+        </div>
+      )}
+
+      {/* AI Summary */}
+      <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.06em", fontWeight: 700 }}>AI ANALYSIS</span>
+          {!aiSummary && (
+            <button onClick={fetchAiSummary} disabled={aiLoading}
+              style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(0,230,118,0.1)", border: "1px solid rgba(0,230,118,0.3)", color: "var(--green-primary)", cursor: "pointer" }}>
+              {aiLoading ? "Analyzing..." : "Summarize"}
+            </button>
+          )}
+        </div>
+        {aiSummary && (
+          <p style={{ fontSize: 11, color: "var(--text-secondary)", margin: 0, lineHeight: 1.6, fontStyle: "italic" }}>
+            {aiSummary}
+          </p>
+        )}
+        {!aiSummary && !aiLoading && (
+          <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
+            Click "Summarize" for an AI-generated analysis.
+          </p>
+        )}
+      </div>
+
+      {/* Nearby Events */}
+      {nearbyEvents.length > 0 && (
+        <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6, letterSpacing: "0.06em", fontWeight: 700 }}>
+            NEARBY EVENTS ({nearbyEvents.length})
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {nearbyEvents.map((ne) => (
+              <button key={ne.id} onClick={() => setSelectedEvent(ne)}
+                style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 6px", background: "transparent", border: "1px solid var(--border)", borderRadius: 4, cursor: "pointer", textAlign: "left", width: "100%" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: SEVERITY_COLOR[ne.severity], flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {ne.title}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, marginLeft: "auto" }}>
+                  {timeAgo(ne.event_time)}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

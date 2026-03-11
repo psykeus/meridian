@@ -23,6 +23,8 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
+    totp_secret = Column(String(64), nullable=True)
+    totp_enabled = Column(Boolean, default=False)
 
 
 class UserCreate(BaseModel):
@@ -41,6 +43,7 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    totp_code: Optional[str] = None
 
 
 class UserResponse(BaseModel):
@@ -49,6 +52,7 @@ class UserResponse(BaseModel):
     username: Optional[str]
     full_name: Optional[str]
     is_verified: bool
+    totp_enabled: bool = False
     tier: str
     created_at: datetime
 

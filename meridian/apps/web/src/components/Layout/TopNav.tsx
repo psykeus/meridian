@@ -149,10 +149,39 @@ function LayerToggleButton() {
 }
 
 function FeedHealthIndicator() {
+  const [feedCount, setFeedCount] = useState<{ healthy: number; total: number }>({ healthy: 0, total: 0 });
+
+  useEffect(() => {
+    const fetchHealth = async () => {
+      try {
+        const resp = await fetch("/api/v1/feeds/health");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const entries = Object.values(data) as { status: string }[];
+        const healthy = entries.filter((e) => e.status === "healthy").length;
+        setFeedCount({ healthy, total: entries.length });
+      } catch { /* ignore */ }
+    };
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const isHealthy = feedCount.healthy > 0 && feedCount.healthy >= feedCount.total * 0.7;
+  const isWarning = feedCount.healthy > 0 && feedCount.healthy < feedCount.total * 0.7;
+
   return (
     <div className="flex items-center gap-1.5">
-      <div className="live-dot healthy" />
-      <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>15 feeds live</span>
+      <div
+        style={{
+          width: 7, height: 7, borderRadius: "50%",
+          background: feedCount.total === 0 ? "var(--text-muted)" : isHealthy ? "var(--green-primary)" : isWarning ? "var(--orange-warning, #ff9800)" : "var(--red-critical, #ff5252)",
+          boxShadow: isHealthy ? "0 0 6px var(--green-primary)" : "none",
+        }}
+      />
+      <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+        {feedCount.total > 0 ? `${feedCount.healthy}/${feedCount.total} feeds` : "Loading..."}
+      </span>
     </div>
   );
 }

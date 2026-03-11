@@ -4,7 +4,7 @@ import httpx
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from workers.base import FeedWorker
-from models.geo_event import GeoEvent
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 
 _COUNTRY_COORDS: dict[str, tuple[float, float]] = {
     "china": (35.86, 104.19), "india": (20.59, 78.96), "indonesia": (0.78, 113.92),
@@ -19,7 +19,7 @@ _COUNTRY_COORDS: dict[str, tuple[float, float]] = {
 class WHOOutbreaksWorker(FeedWorker):
     source_id = "who_outbreaks"
     display_name = "WHO Outbreak News"
-    category = "humanitarian"
+    category = FeedCategory.humanitarian
     refresh_interval = 1800
     _rss_url = "https://www.who.int/rss-feeds/news-english.xml"
 
@@ -55,10 +55,14 @@ class WHOOutbreaksWorker(FeedWorker):
                 pub_date = datetime.now(timezone.utc)
 
             lat, lng = 0.0, 0.0
+            combined = (title + " " + desc).lower()
             for country, coords in _COUNTRY_COORDS.items():
-                if country in title.lower() or country in desc.lower():
+                if country in combined:
                     lat, lng = coords
                     break
+
+            if lat == 0.0 and lng == 0.0:
+                continue  # Skip events we can't place on map
 
             event_id = hashlib.sha256(f"who_{link or title}".encode()).hexdigest()[:16]
 
@@ -68,7 +72,7 @@ class WHOOutbreaksWorker(FeedWorker):
                 category=self.category,
                 title=title,
                 body=desc[:300] if desc else None,
-                severity="high",
+                severity=SeverityLevel.high,
                 lat=lat,
                 lng=lng,
                 event_time=pub_date,

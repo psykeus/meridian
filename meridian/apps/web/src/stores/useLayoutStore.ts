@@ -18,6 +18,7 @@ interface LayoutStore {
   activeLayers: Set<string>;
   savedLayouts: SavedLayout[];
   isLayerPanelOpen: boolean;
+  maximizedPanel: string | null;
 
   setActiveDeck: (deckId: string) => void;
   updateLayout: (layout: Layout[]) => void;
@@ -27,6 +28,7 @@ interface LayoutStore {
   saveCurrentLayout: (label: string) => void;
   loadSavedLayout: (id: string) => void;
   deleteSavedLayout: (id: string) => void;
+  setMaximizedPanel: (panelId: string | null) => void;
 }
 
 function defaultLayersForDeck(deckId: string): Set<string> {
@@ -42,6 +44,7 @@ export const useLayoutStore = create<LayoutStore>()(
       activeLayers: defaultLayersForDeck(DEFAULT_DECK_ID),
       savedLayouts: [],
       isLayerPanelOpen: false,
+      maximizedPanel: null,
 
       setActiveDeck: (deckId) => {
         const deck = getDeck(deckId);
@@ -98,6 +101,8 @@ export const useLayoutStore = create<LayoutStore>()(
 
       deleteSavedLayout: (id) =>
         set((state) => ({ savedLayouts: state.savedLayouts.filter((l) => l.id !== id) })),
+
+      setMaximizedPanel: (panelId) => set({ maximizedPanel: panelId }),
     }),
     {
       name: "meridian-layout",

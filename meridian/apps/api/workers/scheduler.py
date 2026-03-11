@@ -55,6 +55,32 @@ from workers.faa_notam import FAANotamWorker
 from workers.uscg_maritime import USCGMaritimeWorker
 from workers.baker_hughes import BakerHughesWorker
 from workers.telegram_osint import TelegramOSINTWorker
+from workers.emergency_squawks import EmergencySquawksWorker
+from workers.finnhub_markets import FinnhubMarketsWorker
+from workers.reddit_osint import RedditOSINTWorker
+from workers.ripe_bgp import RIPEBGPWorker
+from workers.ioda_outages import IODAOutagesWorker
+from workers.spacetrack_satellites import SpaceTrackSatellitesWorker
+from workers.rainviewer_radar import RainViewerRadarWorker
+from workers.unhcr_displacement import UNHCRDisplacementWorker
+from workers.fema_ipaws import FEMAIPAWSWorker
+from workers.fema_shelters import FEMASheltersWorker
+# Phase 5 workers — nuclear monitoring
+from workers.iaea_pris import IAEAPRISWorker
+from workers.nrc_events import NRCEventsWorker
+from workers.safecast_radiation import SafecastRadiationWorker
+from workers.tsunami_warnings import TsunamiWarningsWorker
+from workers.cisa_advisories import CISAAdvisoriesWorker
+# Phase 6 workers — military/maritime/aviation/finance/space/OSINT
+from workers.gtd_terrorism import GTDTerrorismWorker
+from workers.piracy_imb import PiracyIMBWorker
+from workers.baltic_dry import BalticDryWorker
+from workers.celestrak_tle import CelestrakTLEWorker
+from workers.osint_rss import OSINTRSSWorker
+from workers.airstrikes_derived import AirstrikesDerivedWorker
+from workers.naval_mmsi import NavalMMSIWorker
+from workers.vip_aircraft import VIPAircraftWorker
+from workers.bomber_isr import BomberISRWorker
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +135,37 @@ WORKERS: list[FeedWorker] = [
     USCGMaritimeWorker(),
     BakerHughesWorker(),
     TelegramOSINTWorker(),
+    # Phase 5 workers — BGP & internet outage monitoring
+    RIPEBGPWorker(),
+    IODAOutagesWorker(),
+    # Phase 5 workers — space & weather overlays
+    SpaceTrackSatellitesWorker(),
+    RainViewerRadarWorker(),
+    # Phase 5 workers — humanitarian feeds
+    UNHCRDisplacementWorker(),
+    FEMAIPAWSWorker(),
+    FEMASheltersWorker(),
+    # Phase 5 workers — aviation safety, finance, social OSINT
+    EmergencySquawksWorker(),
+    FinnhubMarketsWorker(),
+    RedditOSINTWorker(),
+    # Phase 5 workers — nuclear monitoring
+    IAEAPRISWorker(),
+    NRCEventsWorker(),
+    SafecastRadiationWorker(),
+    # Phase 5 workers — tsunami & cyber advisories
+    TsunamiWarningsWorker(),
+    CISAAdvisoriesWorker(),
+    # Phase 6 workers — military/maritime/aviation/finance/space/OSINT
+    GTDTerrorismWorker(),
+    PiracyIMBWorker(),
+    BalticDryWorker(),
+    CelestrakTLEWorker(),
+    OSINTRSSWorker(),
+    AirstrikesDerivedWorker(),
+    NavalMMSIWorker(),
+    VIPAircraftWorker(),
+    BomberISRWorker(),
 ]
 
 
@@ -210,6 +267,16 @@ def get_scheduler() -> AsyncIOScheduler:
                 },
             )
 
+        # Feed health monitor — runs every 5 minutes
+        _scheduler.add_job(
+            _check_feed_health,
+            trigger=IntervalTrigger(seconds=300),
+            id="feed_health_monitor",
+            name="Feed Health Monitor",
+            max_instances=1,
+            replace_existing=True,
+        )
+
     return _scheduler
 
 
@@ -218,6 +285,34 @@ async def run_all_workers_once() -> None:
     Workers with run_on_startup=False are skipped to avoid rate-limiting."""
     tasks = [_run_worker(w) for w in WORKERS if w.run_on_startup]
     await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _check_feed_health() -> None:
+    """Periodic health check — publish alerts for unhealthy workers."""
+    from workers.base import FeedStatus
+    unhealthy = []
+    for worker in WORKERS:
+        h = worker.health_check()
+        if h.status in (FeedStatus.error, FeedStatus.stale):
+            unhealthy.append({
+                "source_id": worker.source_id,
+                "display_name": worker.display_name,
+                "status": h.status.value,
+                "last_error": h.last_error,
+                "error_count": h.error_count,
+            })
+    if unhealthy:
+        payload = orjson.dumps({
+            "type": "feed_health_alert",
+            "unhealthy_count": len(unhealthy),
+            "feeds": unhealthy,
+        }).decode()
+        await publish_event("meridian:events", payload)
+        logger.warning(
+            "feed_health_alert",
+            extra={"unhealthy_count": len(unhealthy),
+                   "feeds": [f["source_id"] for f in unhealthy]},
+        )
 
 
 def get_all_workers() -> list[FeedWorker]:

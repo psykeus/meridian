@@ -1,9 +1,15 @@
+import { useMemo } from "react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
 import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import { SEVERITY_COLOR, timeAgo } from "@/lib/utils";
 import type { GeoEvent } from "@/types";
+
+const PIE_COLORS: Record<string, string> = {
+  critical: "#ff3d3d", high: "#ff9800", medium: "#ffeb3b", low: "#448aff", info: "#4caf50",
+};
 
 export function CyberThreatMonitorPanel() {
   const allEvents = useFilteredEvents();
@@ -15,22 +21,42 @@ export function CyberThreatMonitorPanel() {
   const criticalCount = events.filter((e) => e.severity === "critical").length;
   const highCount = events.filter((e) => e.severity === "high").length;
 
+  const pieData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    events.forEach((e) => { counts[e.severity] = (counts[e.severity] || 0) + 1; });
+    return Object.entries(counts)
+      .map(([severity, count]) => ({ name: severity, value: count, color: PIE_COLORS[severity] || "#6b7a8d" }))
+      .sort((a, b) => b.value - a.value);
+  }, [events]);
+
   return (
     <div className="panel" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <PanelHeader
         title="Cyber Threat Monitor"
-        sourceLabel="CISA KEV"
+        sourceLabel="CISA · NVD · Cloudflare · Malware Bazaar"
         eventCount={events.length}
       />
       <PanelSummaryCard topic="Cyber Threat Monitor" contextHint="CISA Known Exploited Vulnerabilities, active cyber incidents, and infrastructure threat signals" />
       <div
         style={{
           display: "flex", gap: 12, padding: "8px 12px",
-          borderBottom: "1px solid var(--border)", flexShrink: 0,
+          borderBottom: "1px solid var(--border)", flexShrink: 0, alignItems: "center",
         }}
       >
         <KpiBadge label="Critical CVEs" value={criticalCount} color="var(--red-critical)" />
         <KpiBadge label="High CVEs" value={highCount} color="var(--orange-warning)" />
+        {pieData.length > 0 && (
+          <div style={{ width: 60, height: 60, marginLeft: "auto" }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} dataKey="value" cx="50%" cy="50%" innerRadius={14} outerRadius={28} paddingAngle={2} stroke="none">
+                  {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Pie>
+                <Tooltip contentStyle={{ background: "#0a0e1a", border: "1px solid #1e2a3a", borderRadius: 4, fontSize: 10 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       <div style={{ flex: 1, overflowY: "auto" }}>

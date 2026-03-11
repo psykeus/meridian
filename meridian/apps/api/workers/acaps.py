@@ -1,8 +1,11 @@
 """ACAPS INFORM Severity Index — humanitarian crisis severity rankings."""
+import logging
 import httpx
 from datetime import datetime, timezone
 from workers.base import FeedWorker
-from models.geo_event import GeoEvent
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
+
+logger = logging.getLogger(__name__)
 
 _COUNTRY_COORDS: dict[str, tuple[float, float]] = {
     "AFG": (33.94, 67.71), "SYR": (34.80, 38.99), "YEM": (15.55, 48.52),
@@ -14,20 +17,20 @@ _COUNTRY_COORDS: dict[str, tuple[float, float]] = {
 }
 
 
-def _severity_from_score(score: float) -> str:
+def _severity_from_score(score: float) -> SeverityLevel:
     if score >= 4.5:
-        return "critical"
+        return SeverityLevel.critical
     if score >= 3.5:
-        return "high"
+        return SeverityLevel.high
     if score >= 2.5:
-        return "medium"
-    return "low"
+        return SeverityLevel.medium
+    return SeverityLevel.low
 
 
 class ACAPSWorker(FeedWorker):
     source_id = "acaps"
     display_name = "ACAPS Crisis Severity"
-    category = "humanitarian"
+    category = FeedCategory.humanitarian
     refresh_interval = 21600
     _api_url = "https://api.acaps.org/api/v1/inform-severity-index/"
 
@@ -36,11 +39,13 @@ class ACAPSWorker(FeedWorker):
             async with httpx.AsyncClient(timeout=30) as client:
                 resp = await client.get(self._api_url, params={"format": "json", "limit": 50, "ordering": "-overall_severity"})
                 if resp.status_code in (401, 403, 404):
-                    return await self._fallback()
+                    logger.warning("acaps_api_auth_failed", extra={"status": resp.status_code})
+                    return []
                 resp.raise_for_status()
                 data = resp.json()
-        except Exception:
-            return await self._fallback()
+        except Exception as exc:
+            logger.warning("acaps_fetch_failed", extra={"error": str(exc)})
+            return []
 
         events: list[GeoEvent] = []
         for item in (data.get("results") or data if isinstance(data, list) else [])[:30]:
@@ -55,7 +60,7 @@ class ACAPSWorker(FeedWorker):
                 source_id=self.source_id,
                 title=f"Humanitarian crisis: {name} (severity {score:.1f}/5)",
                 body=f"ACAPS INFORM Severity Index: {name} rated {score:.2f}/5. Indicator of acute humanitarian need.",
-                category="humanitarian",
+                category=FeedCategory.humanitarian,
                 severity=_severity_from_score(score),
                 lat=lat,
                 lng=lng,
@@ -64,23 +69,3 @@ class ACAPSWorker(FeedWorker):
 
         return events
 
-    async def _fallback(self) -> list[GeoEvent]:
-        hardcoded = [
-            ("Afghanistan", "AFG", 4.9), ("Syria", "SYR", 4.7), ("Yemen", "YEM", 4.6),
-            ("Sudan", "SDN", 4.5), ("Somalia", "SOM", 4.4), ("D.R. Congo", "COD", 4.3),
-            ("Ethiopia", "ETH", 4.2), ("Myanmar", "MMR", 4.0), ("Haiti", "HTI", 3.9),
-        ]
-        now = datetime.now(timezone.utc)
-        return [
-            GeoEvent(
-                source_id=self.source_id,
-                title=f"Humanitarian crisis: {name} (severity {score:.1f}/5)",
-                body=f"ACAPS INFORM Severity: {name} rated {score:.1f}/5.",
-                category="humanitarian",
-                severity=_severity_from_score(score),
-                lat=_COUNTRY_COORDS.get(iso3, (0.0, 0.0))[0],
-                lng=_COUNTRY_COORDS.get(iso3, (0.0, 0.0))[1],
-                event_time=now,
-            )
-            for name, iso3, score in hardcoded
-        ]

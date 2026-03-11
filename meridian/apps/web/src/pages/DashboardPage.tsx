@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { useFilteredEvents } from "@/stores/useFilteredEvents";
 import GridLayout from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
@@ -22,7 +22,7 @@ const COLS = 12;
 const ROW_HEIGHT = 30;
 
 export function DashboardPage() {
-  const { activeDeckId, currentLayout, updateLayout } = useLayoutStore();
+  const { activeDeckId, currentLayout, updateLayout, maximizedPanel, setMaximizedPanel } = useLayoutStore();
   const deck = useMemo(() => getDeck(activeDeckId), [activeDeckId]);
   const fetchReplay = useReplayStore((s) => s.fetchReplay);
   const setLive     = useReplayStore((s) => s.setLive);
@@ -33,6 +33,8 @@ export function DashboardPage() {
     (layout: Layout[]) => updateLayout(layout),
     [updateLayout]
   );
+
+  const maximizedSlot = maximizedPanel ? deck.panels.find((s) => s.component === maximizedPanel) : null;
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -76,11 +78,46 @@ export function DashboardPage() {
         >
           {deck.panels.map((slot) => (
             <div key={slot.i} style={{ display: "flex", flexDirection: "column" }}>
-              {renderPanel(slot.component)}
+              <PanelWrapper panelId={slot.component} onExpand={() => setMaximizedPanel(slot.component)}>
+                {renderPanel(slot.component)}
+              </PanelWrapper>
             </div>
           ))}
         </GridLayout>
       </div>
+
+      {/* Maximized panel overlay */}
+      {maximizedSlot && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.7)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }} onClick={() => setMaximizedPanel(null)}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "90vw", height: "85vh", background: "var(--bg-panel)",
+              border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
+              display: "flex", flexDirection: "column", boxShadow: "0 16px 64px rgba(0,0,0,.6)",
+            }}
+          >
+            <div style={{
+              padding: "6px 12px", borderBottom: "1px solid var(--border)",
+              display: "flex", justifyContent: "flex-end",
+            }}>
+              <button
+                onClick={() => setMaximizedPanel(null)}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--text-muted)", padding: "2px 6px" }}
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              {renderPanel(maximizedSlot.component)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -147,6 +184,29 @@ function EventRow({ event, onClick }: { event: GeoEvent; onClick: () => void }) 
         </span>
         <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{timeAgo(event.event_time)}</span>
       </div>
+    </div>
+  );
+}
+
+function PanelWrapper({ children, onExpand }: { children: ReactNode; panelId: string; onExpand: () => void }) {
+  return (
+    <div style={{ position: "relative", height: "100%", display: "flex", flexDirection: "column" }}>
+      <button
+        onClick={onExpand}
+        title="Expand panel"
+        style={{
+          position: "absolute", top: 4, right: 4, zIndex: 5,
+          width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center",
+          background: "transparent", border: "none", borderRadius: 3,
+          cursor: "pointer", fontSize: 11, color: "var(--text-muted)", opacity: 0.5,
+          transition: "opacity 100ms",
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.background = "var(--bg-hover)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; e.currentTarget.style.background = "transparent"; }}
+      >
+        ⊞
+      </button>
+      {children}
     </div>
   );
 }

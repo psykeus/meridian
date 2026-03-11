@@ -1,8 +1,12 @@
+import logging
 import httpx
 from datetime import datetime, timezone
 from typing import List
 from .base import FeedWorker
+from core.credential_store import get_credential
 from models.geo_event import GeoEvent, FeedCategory, SeverityLevel
+
+logger = logging.getLogger(__name__)
 
 _NAVAL_MMSI_PREFIXES = {
     "235": ("GBR", "Royal Navy"),
@@ -39,8 +43,11 @@ class AISHubWorker(FeedWorker):
     _URL = "https://data.aishub.net/ws.php"
 
     async def fetch(self) -> List[GeoEvent]:
+        username = get_credential("AISHUB_USERNAME") or "AIS-DEVELOPMENT"
+        if username == "AIS-DEVELOPMENT":
+            logger.warning("aishub_using_dev_credentials — set AISHUB_USERNAME in Settings for production access")
         params = {
-            "username": "AIS-DEVELOPMENT",
+            "username": username,
             "format": "1",
             "output": "json",
             "compress": "0",
@@ -61,7 +68,7 @@ class AISHubWorker(FeedWorker):
 
         vessels = data[1] if isinstance(data[1], list) else []
         events: List[GeoEvent] = []
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
 
         for v in vessels[:500]:
             try:
@@ -103,7 +110,7 @@ class AISHubWorker(FeedWorker):
                     body=body,
                     lat=lat,
                     lng=lng,
-                    event_time=now_iso,
+                    event_time=now,
                     metadata={
                         "mmsi": mmsi, "ship_type": ship_type,
                         "sog_kn": sog, "cog_deg": cog,

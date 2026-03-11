@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import pyotp
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
@@ -48,3 +49,31 @@ def decode_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+def create_password_reset_token(user_id: int, email: str) -> str:
+    return _create_token(
+        {"sub": str(user_id), "email": email, "type": "password_reset"},
+        timedelta(hours=1),
+    )
+
+
+def create_email_verification_token(user_id: int, email: str) -> str:
+    return _create_token(
+        {"sub": str(user_id), "email": email, "type": "email_verify"},
+        timedelta(hours=24),
+    )
+
+
+# ─── TOTP helpers ────────────────────────────────────────────────────────────
+
+def generate_totp_secret() -> str:
+    return pyotp.random_base32()
+
+
+def get_totp_uri(secret: str, email: str) -> str:
+    return pyotp.totp.TOTP(secret).provisioning_uri(email, issuer_name="Meridian")
+
+
+def verify_totp(secret: str, code: str) -> bool:
+    return pyotp.TOTP(secret).verify(code)

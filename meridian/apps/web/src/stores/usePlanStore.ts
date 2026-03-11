@@ -49,18 +49,28 @@ export interface Task {
   updated_at: string;
 }
 
+export interface DrawingMode {
+  type: string;
+  color: string;
+  label?: string;
+  notes?: string;
+  roomId: number;
+}
+
 interface PlanStore {
   rooms: PlanRoom[];
   activeRoomId: number | null;
   annotations: Annotation[];
   timeline: TimelineEntry[];
   tasks: Task[];
+  drawingMode: DrawingMode | null;
 
   setRooms: (rooms: PlanRoom[]) => void;
   setActiveRoom: (id: number | null) => void;
   setAnnotations: (a: Annotation[]) => void;
   setTimeline: (t: TimelineEntry[]) => void;
   setTasks: (t: Task[]) => void;
+  setDrawingMode: (mode: DrawingMode | null) => void;
   addAnnotation: (a: Annotation) => void;
   addTimelineEntry: (e: TimelineEntry) => void;
   addTask: (t: Task) => void;
@@ -82,12 +92,14 @@ export const usePlanStore = create<PlanStore>((set, get) => ({
   annotations: [],
   timeline: [],
   tasks: [],
+  drawingMode: null,
 
   setRooms: (rooms) => set({ rooms }),
   setActiveRoom: (id) => set({ activeRoomId: id }),
   setAnnotations: (annotations) => set({ annotations }),
   setTimeline: (timeline) => set({ timeline }),
   setTasks: (tasks) => set({ tasks }),
+  setDrawingMode: (drawingMode) => set({ drawingMode }),
 
   addAnnotation: (a) => set((s) => ({ annotations: [...s.annotations, a] })),
   addTimelineEntry: (e) => set((s) => ({ timeline: [e, ...s.timeline] })),

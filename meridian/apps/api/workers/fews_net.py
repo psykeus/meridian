@@ -1,4 +1,5 @@
 """FEWS NET — Famine Early Warning System food security alerts."""
+import hashlib
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -6,6 +7,7 @@ import httpx
 
 from .base import FeedWorker
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
+from workers._country_coords import COUNTRY_COORDS
 
 _RSS_URL = "https://fews.net/fews-data/333"
 
@@ -49,15 +51,26 @@ class FEWSNETWorker(FeedWorker):
             except Exception:
                 event_time = datetime.now(timezone.utc)
 
+            # Deterministic ID using hashlib (hash() varies across Python runs)
+            event_id = hashlib.md5(f"fews_{title}_{date_str}".encode()).hexdigest()[:12]
+
+            # Geocode from title text using country coords
+            lat, lng = 0.0, 20.0  # default: central Africa
+            title_lower = title.lower()
+            for code, coords in COUNTRY_COORDS.items():
+                if code.lower() in title_lower:
+                    lat, lng = coords
+                    break
+
             events.append(GeoEvent(
-                id=f"fews_{abs(hash(title + date_str))}",
+                id=f"fews_{event_id}",
                 source_id=self.source_id,
                 category=self.category,
                 severity=SeverityLevel.high,
                 title=f"FEWS NET: {title[:120]}",
                 body=desc[:300] if desc else None,
-                lat=0.0, lng=20.0,
-                event_time=event_time.isoformat(),
+                lat=lat, lng=lng,
+                event_time=event_time,
                 url=link or "https://fews.net/",
                 metadata={"source": "fews_net"},
             ))

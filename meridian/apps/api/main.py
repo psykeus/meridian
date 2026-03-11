@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import get_settings
 from core.redis_client import close_redis, get_redis
+from core.rate_limiter import RateLimitMiddleware
 from routers import events, feeds, auth, alerts, plan_rooms, intel
 from routers import orgs, tokens, billing, exports, collab, chat_sessions, credentials
 from core.credential_store import load_from_db
@@ -54,6 +55,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RateLimitMiddleware)
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(events.router, prefix="/api/v1")

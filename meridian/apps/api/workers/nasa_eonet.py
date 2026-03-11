@@ -2,29 +2,28 @@
 import httpx
 from datetime import datetime, timezone
 from workers.base import FeedWorker
-from models.geo_event import GeoEvent
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 
 _CATEGORY_MAP = {
-    "Wildfires": ("environment", "high"),
-    "Severe Storms": ("environment", "high"),
-    "Volcanoes": ("environment", "high"),
-    "Sea and Lake Ice": ("environment", "low"),
-    "Earthquakes": ("environment", "medium"),
-    "Floods": ("environment", "high"),
-    "Landslides": ("environment", "medium"),
-    "Snow": ("environment", "low"),
-    "Drought": ("environment", "medium"),
-    "Dust and Haze": ("environment", "low"),
-    "Manmade": ("humanitarian", "medium"),
-    "Sea and Lake Ice": ("environment", "low"),
-    "Water Color": ("environment", "info"),
+    "Wildfires": (FeedCategory.environment, SeverityLevel.high),
+    "Severe Storms": (FeedCategory.environment, SeverityLevel.high),
+    "Volcanoes": (FeedCategory.environment, SeverityLevel.high),
+    "Sea and Lake Ice": (FeedCategory.environment, SeverityLevel.low),
+    "Earthquakes": (FeedCategory.environment, SeverityLevel.medium),
+    "Floods": (FeedCategory.environment, SeverityLevel.high),
+    "Landslides": (FeedCategory.environment, SeverityLevel.medium),
+    "Snow": (FeedCategory.environment, SeverityLevel.low),
+    "Drought": (FeedCategory.environment, SeverityLevel.medium),
+    "Dust and Haze": (FeedCategory.environment, SeverityLevel.low),
+    "Manmade": (FeedCategory.humanitarian, SeverityLevel.medium),
+    "Water Color": (FeedCategory.environment, SeverityLevel.info),
 }
 
 
 class NASAEONETWorker(FeedWorker):
     source_id = "nasa_eonet"
     display_name = "NASA EONET Natural Events"
-    category = "environment"
+    category = FeedCategory.environment
     refresh_interval = 600
     _api_url = "https://eonet.gsfc.nasa.gov/api/v3/events"
 
@@ -39,7 +38,7 @@ class NASAEONETWorker(FeedWorker):
         for item in data.get("events", []):
             categories = item.get("categories", [])
             cat_name = categories[0].get("title", "Wildfires") if categories else "Wildfires"
-            category, severity = _CATEGORY_MAP.get(cat_name, ("environment", "medium"))
+            category, severity = _CATEGORY_MAP.get(cat_name, (FeedCategory.environment, SeverityLevel.medium))
 
             geometries = item.get("geometry", [])
             if not geometries:

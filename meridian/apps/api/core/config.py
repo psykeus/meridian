@@ -1,7 +1,10 @@
+import logging
 from functools import lru_cache
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -81,4 +84,10 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    s = Settings()
+    if s.secret_key == "change-me-to-a-random-64-char-string":
+        logger.critical(
+            "SECRET_KEY is still the default value! "
+            "Set a unique random string in .env before deploying to production."
+        )
+    return s

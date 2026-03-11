@@ -2,21 +2,24 @@
 import httpx
 from datetime import datetime, timezone
 from workers.base import FeedWorker
-from models.geo_event import GeoEvent
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
+
+# NOAA Space Weather Prediction Center, Boulder, CO
+_SWPC_LAT, _SWPC_LNG = 39.9956, -105.2621
 
 _CATEGORY_SEVERITY = {
-    "X": "critical",
-    "M": "high",
-    "C": "medium",
-    "B": "low",
-    "A": "info",
+    "X": SeverityLevel.critical,
+    "M": SeverityLevel.high,
+    "C": SeverityLevel.medium,
+    "B": SeverityLevel.low,
+    "A": SeverityLevel.info,
 }
 
 
 class NOAASpaceWeatherWorker(FeedWorker):
     source_id = "noaa_space_weather"
     display_name = "NOAA Space Weather"
-    category = "space"
+    category = FeedCategory.space
     refresh_interval = 1800
     _api_url = "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json"
     _alerts_url = "https://services.swpc.noaa.gov/products/alerts.json"
@@ -49,7 +52,7 @@ class NOAASpaceWeatherWorker(FeedWorker):
                     class_key = key
                     break
 
-            severity = _CATEGORY_SEVERITY.get(class_key, "medium")
+            severity = _CATEGORY_SEVERITY.get(class_key, SeverityLevel.medium)
 
             try:
                 ts = datetime.strptime(issue_time, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
@@ -63,10 +66,10 @@ class NOAASpaceWeatherWorker(FeedWorker):
                 source_id=self.source_id,
                 title=title,
                 body=message[:600],
-                category="space",
+                category=FeedCategory.space,
                 severity=severity,
-                lat=0.0,
-                lng=0.0,
+                lat=_SWPC_LAT,
+                lng=_SWPC_LNG,
                 event_time=ts,
             ))
 

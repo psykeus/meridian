@@ -1,7 +1,9 @@
 from typing import Annotated
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, text as sa_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -158,6 +160,68 @@ async def add_timeline_entry(
     await db.commit()
     await db.refresh(entry)
     return entry
+
+
+@router.post("/{room_id}/timeline/auto-populate", response_model=list[TimelineEntryResponse])
+async def auto_populate_timeline(
+    room_id: int, current_user: CurrentUser, db: AsyncSession = Depends(get_db),
+    hours_back: int = 24, limit: int = 20,
+):
+    """Auto-populate timeline with recent geo_events within the plan room's AOI bounding box."""
+    room = await _get_room_or_404(room_id, current_user.id, db)
+    bbox = room.aoi_bbox  # [lng_min, lat_min, lng_max, lat_max]
+    if not bbox or len(bbox) != 4:
+        raise HTTPException(400, "Plan room has no AOI bounding box defined")
+
+    since = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+
+    result = await db.execute(
+        sa_text("""
+            SELECT id, source_id, category, title, body, severity, lat, lng, event_time
+            FROM geo_events
+            WHERE lat >= :lat_min AND lat <= :lat_max
+              AND lng >= :lng_min AND lng <= :lng_max
+              AND event_time >= :since
+            ORDER BY event_time DESC
+            LIMIT :lim
+        """),
+        {
+            "lat_min": bbox[1], "lat_max": bbox[3],
+            "lng_min": bbox[0], "lng_max": bbox[2],
+            "since": since, "lim": limit,
+        },
+    )
+    rows = result.fetchall()
+
+    # Deduplicate against existing auto entries
+    existing = await db.execute(
+        select(TimelineEntry.title)
+        .where(TimelineEntry.plan_room_id == room_id, TimelineEntry.is_auto == True)
+    )
+    existing_titles = {r[0] for r in existing.fetchall()}
+
+    entries = []
+    for row in rows:
+        if row.title in existing_titles:
+            continue
+        entry = TimelineEntry(
+            plan_room_id=room_id,
+            created_by=None,
+            is_auto=True,
+            title=row.title,
+            body=f"[{row.severity}] {row.category} — {row.source_id}".replace("_", " "),
+            source_label=row.source_id,
+            entry_time=row.event_time,
+        )
+        db.add(entry)
+        entries.append(entry)
+
+    if entries:
+        await db.commit()
+        for e in entries:
+            await db.refresh(e)
+
+    return entries
 
 
 # ─── Tasks ────────────────────────────────────────────────────────────────────

@@ -33,7 +33,7 @@ class NASAFIRMSWorker(FeedWorker):
                 return []
 
         events: List[GeoEvent] = []
-        features = data.get("features") or data if isinstance(data, list) else []
+        features = data.get("features") if isinstance(data, dict) else data if isinstance(data, list) else []
         for feat in features[:200]:
             try:
                 props = feat.get("properties", feat)
@@ -69,7 +69,7 @@ class NASAFIRMSWorker(FeedWorker):
                     body=f"Brightness: {brightness:.0f} K, FRP: {frp:.0f} MW",
                     lat=lat,
                     lng=lng,
-                    event_time=event_time.isoformat(),
+                    event_time=event_time,
                     metadata={"brightness": brightness, "frp": frp,
                                "satellite": props.get("satellite", "VIIRS")},
                 ))

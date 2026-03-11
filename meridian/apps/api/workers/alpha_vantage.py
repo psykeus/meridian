@@ -1,9 +1,12 @@
+import logging
 import httpx
 from datetime import datetime, timezone
 from typing import List
 from core.config import get_settings
 from .base import FeedWorker
 from models.geo_event import GeoEvent, FeedCategory, SeverityLevel
+
+logger = logging.getLogger(__name__)
 
 _SYMBOLS = [
     ("SPY",  "S&P 500 ETF",    38.9, -77.0),
@@ -41,8 +44,10 @@ class AlphaVantageWorker(FeedWorker):
     async def fetch(self) -> List[GeoEvent]:
         settings = get_settings()
         api_key = settings.alpha_vantage_api_key or "demo"
+        if api_key == "demo":
+            logger.warning("alpha_vantage_demo_key — rate-limited to 5 calls/day. Set ALPHA_VANTAGE_API_KEY for production use.")
         events: List[GeoEvent] = []
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
 
         async with httpx.AsyncClient(timeout=20) as client:
             for symbol, label, lat, lng in _SYMBOLS:
@@ -93,7 +98,7 @@ class AlphaVantageWorker(FeedWorker):
                         body=f"Price: {price:.4f}" + (f" | Change: {pct:+.2f}%" if pct else ""),
                         lat=lat,
                         lng=lng,
-                        event_time=now_iso,
+                        event_time=now,
                         metadata={"symbol": symbol, "price": price, "change_pct": pct},
                     ))
                 except Exception:

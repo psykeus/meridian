@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BarChart, Bar, XAxis, Tooltip, Cell, ResponsiveContainer } from "recharts";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 
@@ -33,6 +34,24 @@ export function GeopoliticalRiskPanel() {
     <div className="panel" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <PanelHeader title="Geopolitical Risk Index" sourceLabel="AI · Live Feeds" eventCount={entries.length} />
       <PanelSummaryCard topic="Geopolitical Risk Index" contextHint="Country-level risk scores derived from conflict, political stability, and event data" />
+      {entries.length > 0 && (
+        <div style={{ height: 80, padding: "4px 8px 0", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={entries.slice(0, 10)} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
+              <XAxis dataKey="country" tick={{ fontSize: 8, fill: "#6b7a8d" }} axisLine={false} tickLine={false} interval={0} angle={-30} textAnchor="end" height={24} />
+              <Tooltip
+                contentStyle={{ background: "#0a0e1a", border: "1px solid #1e2a3a", borderRadius: 4, fontSize: 11 }}
+                formatter={(v: number) => [v, "Risk Score"]}
+              />
+              <Bar dataKey="score" radius={[2, 2, 0, 0]}>
+                {entries.slice(0, 10).map((d, i) => (
+                  <Cell key={i} fill={TIER_COLOR[d.tier]} fillOpacity={0.8} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
       <div style={{ flex: 1, overflowY: "auto" }}>
         {loading ? (
           <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>

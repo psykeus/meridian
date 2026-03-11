@@ -2,13 +2,13 @@
 import httpx
 from datetime import datetime, timezone
 from workers.base import FeedWorker
-from models.geo_event import GeoEvent
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 
 
 class ReliefWebWorker(FeedWorker):
     source_id = "reliefweb"
     display_name = "ReliefWeb Disasters"
-    category = "humanitarian"
+    category = FeedCategory.humanitarian
     refresh_interval = 900
     _api_url = "https://api.reliefweb.int/v1/disasters"
 
@@ -36,7 +36,7 @@ class ReliefWebWorker(FeedWorker):
                 lat, lng = 0.0, 0.0
 
             status = fields.get("status", "alert")
-            severity = "high" if status == "alert" else "medium" if status == "ongoing" else "low"
+            severity = SeverityLevel.high if status == "alert" else SeverityLevel.medium if status == "ongoing" else SeverityLevel.low
 
             event_time_str = fields.get("date", {}).get("created", "")
             try:
