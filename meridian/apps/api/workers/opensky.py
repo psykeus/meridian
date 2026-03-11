@@ -151,7 +151,7 @@ class OpenSkyWorker(FeedWorker):
                     )
 
                 events.append(GeoEvent(
-                    id=f"opensky_{icao24}_{last_contact or now_iso}",
+                    id=f"opensky_{icao24}",
                     source_id=self.source_id,
                     category=self.category,
                     severity=severity,

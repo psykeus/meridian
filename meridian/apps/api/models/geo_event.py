@@ -4,8 +4,8 @@ from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, DateTime, Index, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import Column, DateTime, Float, Index, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
 from core.database import Base
@@ -39,15 +39,15 @@ class SeverityLevel(str, Enum):
 class GeoEventORM(Base):
     __tablename__ = "geo_events"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String, primary_key=True)
     source_id = Column(String, nullable=False, index=True)
     category = Column(String, nullable=False, index=True)
     subcategory = Column(String)
     title = Column(Text, nullable=False)
     body = Column(Text)
     severity = Column(String, nullable=False, default="info")
-    lat = Column("lat", type_=None, nullable=False)
-    lng = Column("lng", type_=None, nullable=False)
+    lat = Column(Float, nullable=False)
+    lng = Column(Float, nullable=False)
     metadata_ = Column("metadata", JSONB, nullable=False, default=dict)
     url = Column(Text)
     event_time = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -55,7 +55,7 @@ class GeoEventORM(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
-        primary_key=True,
+        index=True,
     )
 
     __table_args__ = (

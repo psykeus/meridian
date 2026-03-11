@@ -1,10 +1,13 @@
 import asyncio
+import json
 import logging
 
 import orjson
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from sqlalchemy import text as sa_text
 
+from core.database import AsyncSessionLocal
 from core.redis_client import publish_event
 from workers.base import FeedWorker
 from workers.usgs_earthquakes import USGSEarthquakesWorker
@@ -109,10 +112,60 @@ WORKERS: list[FeedWorker] = [
 ]
 
 
+_UPSERT_SQL = sa_text("""
+    INSERT INTO geo_events
+        (id, source_id, category, subcategory, title, body, severity,
+         lat, lng, metadata, url, event_time)
+    VALUES
+        (:id, :source_id, :category, :subcategory, :title, :body, :severity,
+         :lat, :lng, :metadata::jsonb, :url, :event_time)
+    ON CONFLICT (id) DO UPDATE SET
+        lat        = EXCLUDED.lat,
+        lng        = EXCLUDED.lng,
+        event_time = EXCLUDED.event_time,
+        title      = EXCLUDED.title,
+        body       = EXCLUDED.body,
+        metadata   = EXCLUDED.metadata,
+        severity   = EXCLUDED.severity
+""")
+
+
+async def _persist_events(events: list) -> None:
+    """Bulk-upsert GeoEvents into geo_events table."""
+    if not events:
+        return
+    rows = [
+        {
+            "id": e.id,
+            "source_id": e.source_id,
+            "category": e.category if isinstance(e.category, str) else e.category.value,
+            "subcategory": e.subcategory,
+            "title": e.title,
+            "body": e.body,
+            "severity": e.severity if isinstance(e.severity, str) else e.severity.value,
+            "lat": float(e.lat),
+            "lng": float(e.lng),
+            "metadata": json.dumps(e.metadata or {}),
+            "url": e.url,
+            "event_time": e.event_time,
+        }
+        for e in events
+    ]
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(_UPSERT_SQL, rows)
+            await session.commit()
+    except Exception as exc:
+        logger.warning("db_persist_failed", extra={"error": str(exc)})
+
+
 async def _run_worker(worker: FeedWorker) -> None:
     events = await worker.run()
     if not events:
         return
+
+    # Persist to DB first so HTTP hydration always has data
+    await _persist_events(events)
 
     pipeline_payloads = [
         orjson.dumps({
