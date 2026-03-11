@@ -107,8 +107,10 @@ function FeedRow({ id, feed }: { id: string; feed: FeedHealth }) {
     unknown: "var(--text-muted)",
   }[feed.status] ?? "var(--text-muted)";
 
-  const errorRate = feed.fetch_count > 0
-    ? ((feed.error_count / feed.fetch_count) * 100).toFixed(1)
+  const fetchCount = feed.fetch_count ?? 0;
+  const errorCount = feed.error_count ?? 0;
+  const errorRate = fetchCount > 0
+    ? ((errorCount / fetchCount) * 100).toFixed(1)
     : "0.0";
 
   return (
@@ -129,13 +131,13 @@ function FeedRow({ id, feed }: { id: string; feed: FeedHealth }) {
         {feed.last_success ? timeAgo(feed.last_success) : "—"}
       </td>
       <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-primary)", fontFamily: "var(--font-mono)" }}>
-        {feed.fetch_count.toLocaleString()}
+        {fetchCount.toLocaleString()}
       </td>
-      <td style={{ padding: "10px 14px", fontSize: 12, fontFamily: "var(--font-mono)", color: feed.error_count > 0 ? "var(--red-critical)" : "var(--text-muted)" }}>
-        {feed.error_count} <span style={{ fontSize: 10, color: "var(--text-muted)" }}>({errorRate}%)</span>
+      <td style={{ padding: "10px 14px", fontSize: 12, fontFamily: "var(--font-mono)", color: errorCount > 0 ? "var(--red-critical)" : "var(--text-muted)" }}>
+        {errorCount} <span style={{ fontSize: 10, color: "var(--text-muted)" }}>({errorRate}%)</span>
       </td>
       <td style={{ padding: "10px 14px", fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-        {feed.avg_latency_ms !== undefined ? `${feed.avg_latency_ms.toFixed(0)}ms` : "—"}
+        {feed.avg_latency_ms != null ? `${feed.avg_latency_ms.toFixed(0)}ms` : "—"}
       </td>
     </tr>
   );
