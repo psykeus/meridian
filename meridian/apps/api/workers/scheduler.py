@@ -118,7 +118,7 @@ _UPSERT_SQL = sa_text("""
          lat, lng, metadata, url, event_time)
     VALUES
         (:id, :source_id, :category, :subcategory, :title, :body, :severity,
-         :lat, :lng, :metadata::jsonb, :url, :event_time)
+         :lat, :lng, CAST(:metadata AS jsonb), :url, :event_time)
     ON CONFLICT (id) DO UPDATE SET
         lat        = EXCLUDED.lat,
         lng        = EXCLUDED.lng,
@@ -145,7 +145,7 @@ async def _persist_events(events: list) -> None:
             "severity": e.severity if isinstance(e.severity, str) else e.severity.value,
             "lat": float(e.lat),
             "lng": float(e.lng),
-            "metadata": json.dumps(e.metadata or {}),
+            "metadata": json.dumps(e.metadata or {}),  # CAST AS jsonb handles string→jsonb
             "url": e.url,
             "event_time": e.event_time,
         }
