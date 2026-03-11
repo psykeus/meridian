@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useEventStore } from "@/stores/useEventStore";
-import type { WebSocketMessage } from "@/types";
+import type { GeoEvent, WebSocketMessage } from "@/types";
 
 const WS_URL = `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
 const RECONNECT_DELAY_MS = 3000;
@@ -8,10 +8,24 @@ const RECONNECT_DELAY_MS = 3000;
 export function useEventSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydratedRef = useRef(false);
   const addEvent = useEventStore((s) => s.addEvent);
+  const addEvents = useEventStore((s) => s.addEvents);
 
   useEffect(() => {
     let stopped = false;
+
+    async function hydrate() {
+      if (hydratedRef.current) return;
+      hydratedRef.current = true;
+      try {
+        const resp = await fetch("/api/v1/events?limit=500&hours_back=24");
+        if (resp.ok) {
+          const data: GeoEvent[] = await resp.json();
+          if (Array.isArray(data) && data.length) addEvents(data);
+        }
+      } catch { /* API not ready yet */ }
+    }
 
     function connect() {
       if (stopped) return;
@@ -21,6 +35,7 @@ export function useEventSocket() {
 
       ws.onopen = () => {
         console.info("[socket] connected to event stream");
+        hydrate();
       };
 
       ws.onmessage = (e: MessageEvent<string>) => {
@@ -52,5 +67,5 @@ export function useEventSocket() {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
-  }, [addEvent]);
+  }, [addEvent, addEvents]);
 }
