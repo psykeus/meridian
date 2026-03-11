@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-app: #090d09;
+    --bg-panel: #0f140f;
+    --bg-card: #151c15;
+    --bg-hover: #1c261c;
+    --border: #2a3a2a;
+    --green-primary: #00e676;
+    --cyan-info: #00bcd4;
+    --red-critical: #ff5252;
+    --orange-warning: #ff9800;
+    --yellow-caution: #ffeb3b;
+    --purple-ai: #7c4dff;
+    --blue-track: #448aff;
+    --text-primary: #e8f0e8;
+    --text-secondary: #7a9a7a;
+    --text-muted: #4a6a4a;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg-app);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  * {
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  *::-webkit-scrollbar { width: 4px; height: 4px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border;
+    background: var(--bg-panel);
+    border-color: var(--border);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    @apply flex items-center justify-between px-4;
+    height: 40px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-panel);
+  }
+
+  .data-row {
+    @apply flex items-center gap-3 px-4 cursor-pointer;
+    min-height: 36px;
+    border-bottom: 1px solid var(--border);
+    transition: background 100ms;
+  }
+
+  .data-row:hover {
+    background: var(--bg-hover);
+  }
+
+  .severity-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full font-bold;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .source-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded font-mono;
+    font-size: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+
+  .live-dot {
+    @apply w-2 h-2 rounded-full;
+    animation: pulse-live 2s infinite;
+  }
+
+  .live-dot.healthy { background: var(--green-primary); }
+  .live-dot.stale   { background: var(--orange-warning); }
+  .live-dot.error   { background: var(--red-critical); }
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* MapLibre overrides */
+.maplibregl-map { font-family: 'Inter', sans-serif; }
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right { display: none; }

@@ -1,0 +1,65 @@
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.coverage
+.coverage
+htmlcov/
+
+# ─── Node / JS ────────────────────────────────────────────────────────────────
+node_modules/
+dist/
+.next/
+.nuxt/
+.svelte-kit/
+.output/
+*.tsbuildinfo
+
+# ─── Vite / Build ─────────────────────────────────────────────────────────────
+meridian/apps/web/dist/
+
+# ─── Environment & secrets ────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ─── Database / Migrations ────────────────────────────────────────────────────
+*.sqlite
+*.db
+
+# ─── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+*.env.docker
