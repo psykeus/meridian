@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { apiFetch } from "@/lib/api";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
+import { useEventStore } from "@/stores/useEventStore";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -41,7 +43,7 @@ export function AIAnalystPanel() {
     setMessages((prev) => [...prev, assistantMsg]);
 
     try {
-      const resp = await fetch("/ai/chat", {
+      const resp = await apiFetch("/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -146,7 +148,9 @@ export function AIAnalystPanel() {
               {msg.role === "user" ? "YOU" : "ANALYST"}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-primary)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
-              {msg.content}
+              {msg.role === "assistant" && !msg.isStreaming
+                ? <MessageWithLocations text={msg.content} />
+                : msg.content}
               {msg.isStreaming && <span style={{ opacity: 0.6, animation: "pulse 1s infinite" }}>▊</span>}
             </div>
           </div>
@@ -181,5 +185,93 @@ export function AIAnalystPanel() {
         </button>
       </div>
     </div>
+  );
+}
+
+// ── Parse AI responses for coordinate patterns and render "Show on map" buttons ──
+
+const COORD_RE = /(-?\d{1,3}(?:\.\d+)?)\s*°?\s*([NS])[\s,]+(-?\d{1,3}(?:\.\d+)?)\s*°?\s*([EW])/gi;
+const LATLON_RE = /(?:lat(?:itude)?[:=\s]+)(-?\d{1,3}(?:\.\d+)?)[\s,]+(?:lo?ng?(?:itude)?[:=\s]+)(-?\d{1,3}(?:\.\d+)?)/gi;
+const BRACKET_RE = /\[(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\]/g;
+
+interface LocationMatch { lat: number; lng: number; label: string; index: number }
+
+function extractLocations(text: string): LocationMatch[] {
+  const results: LocationMatch[] = [];
+  const seen = new Set<string>();
+  let m: RegExpExecArray | null;
+
+  // 40.71°N, 74.01°W
+  COORD_RE.lastIndex = 0;
+  while ((m = COORD_RE.exec(text)) !== null) {
+    let lat = parseFloat(m[1]); if (m[2].toUpperCase() === "S") lat = -lat;
+    let lng = parseFloat(m[3]); if (m[4].toUpperCase() === "W") lng = -lng;
+    const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    if (!seen.has(key) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      seen.add(key);
+      results.push({ lat, lng, label: m[0], index: m.index });
+    }
+  }
+  // lat: 40.71, lng: -74.01
+  LATLON_RE.lastIndex = 0;
+  while ((m = LATLON_RE.exec(text)) !== null) {
+    const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+    const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    if (!seen.has(key) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      seen.add(key);
+      results.push({ lat, lng, label: `${lat}, ${lng}`, index: m.index });
+    }
+  }
+  // [40.71, -74.01]
+  BRACKET_RE.lastIndex = 0;
+  while ((m = BRACKET_RE.exec(text)) !== null) {
+    const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+    const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+    if (!seen.has(key) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+      seen.add(key);
+      results.push({ lat, lng, label: m[0], index: m.index });
+    }
+  }
+  return results;
+}
+
+function MessageWithLocations({ text }: { text: string }) {
+  const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
+  const locations = useMemo(() => extractLocations(text), [text]);
+
+  if (locations.length === 0) return <>{text}</>;
+
+  return (
+    <>
+      {text}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+        {locations.map((loc, i) => (
+          <button
+            key={i}
+            onClick={() => {
+              setSelectedEvent({
+                id: `ai-loc-${Date.now()}-${i}`,
+                title: `AI Reference: ${loc.label}`,
+                body: "",
+                lat: loc.lat,
+                lng: loc.lng,
+                category: "geopolitical",
+                severity: "info",
+                source_id: "ai_analyst",
+                event_time: new Date().toISOString(),
+                metadata: {},
+              } as any);
+            }}
+            style={{
+              padding: "2px 8px", borderRadius: 3, fontSize: 10, fontWeight: 600,
+              background: "rgba(68,138,255,0.12)", border: "1px solid rgba(68,138,255,0.3)",
+              color: "#448aff", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 3,
+            }}
+          >
+            🗺 {loc.lat.toFixed(2)}, {loc.lng.toFixed(2)}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import { usePlanTrackingStore } from "@/stores/usePlanTrackingStore";
 import { AnnotationPanel } from "@/components/PlanMode/AnnotationPanel";
 import { BriefingMode } from "@/components/PlanMode/BriefingMode";
 import { timeAgo } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
 import { SOURCE_TO_DATASOURCE } from "@/config/dataSources";
 import { useCollabSocket, useCollabStore, getCollabIdentity } from "@/hooks/useCollabSocket";
 import { useLayoutStore } from "@/stores/useLayoutStore";
@@ -41,7 +42,7 @@ export function PlanModePage() {
           <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>Plan Rooms</span>
           <button onClick={() => setShowCreate(true)} style={{ fontSize: 18, lineHeight: 1, background: "none", border: "none", cursor: "pointer", color: "var(--green-primary)" }} title="New Plan Room">+</button>
         </div>
-        <button onClick={() => { setShowTracked(!showTracked); setActiveRoom(null as unknown as number); }}
+        <button onClick={() => { setShowTracked(!showTracked); setActiveRoom(null!); }}
           style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
             background: showTracked ? "var(--bg-hover)" : "transparent", border: "none",
             borderLeft: showTracked ? "2px solid var(--green-primary)" : "2px solid transparent",
@@ -115,7 +116,7 @@ function RoomDetail({ room }: { room: PlanRoom }) {
     { id: "members", label: "Members" },
   ];
 
-  const handleExport = async (format: "json" | "geojson" | "kml") => {
+  const handleExport = async (format: "json" | "geojson" | "kml" | "pdf") => {
     setShowExport(false);
     const url = `/api/v1/plan-rooms/${room.id}/export/${format}`;
     const r = await fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem("access_token") ?? ""}` } });
@@ -161,7 +162,7 @@ function RoomDetail({ room }: { room: PlanRoom }) {
             </button>
             {showExport && (
               <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, background: "var(--bg-panel)", border: "1px solid var(--border)", borderRadius: 6, zIndex: 100, minWidth: 160, boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>
-                {(["json", "geojson", "kml"] as const).map((fmt) => (
+                {(["json", "geojson", "kml", "pdf"] as const).map((fmt) => (
                   <button key={fmt} onClick={() => handleExport(fmt)} style={{ display: "block", width: "100%", textAlign: "left", padding: "8px 14px", background: "none", border: "none", fontSize: 12, color: "var(--text-primary)", cursor: "pointer", borderBottom: "1px solid var(--border)" }}>
                     Export as {fmt.toUpperCase()}
                   </button>
@@ -258,7 +259,7 @@ function RoomDetail({ room }: { room: PlanRoom }) {
       <div style={{ flex: 1, overflow: "hidden" }}>
         {activeTab === "tasks" && <TaskBoard roomId={room.id} />}
         {activeTab === "timeline" && <TimelinePanel roomId={room.id} />}
-        {activeTab === "annotations" && <AnnotationPanel roomId={room.id} />}
+        {activeTab === "annotations" && <AnnotationPanel roomId={room.id} onAnnotationSelect={(ann) => usePlanStore.getState().setSpotlightAnnotation(ann.id)} />}
         {activeTab === "intel" && <IntelTab roomId={room.id} />}
         {activeTab === "members" && <MembersTab roomId={room.id} />}
       </div>
@@ -269,6 +270,28 @@ function RoomDetail({ room }: { room: PlanRoom }) {
 function TaskBoard({ roomId }: { roomId: number }) {
   const { tasks, addTask, updateTask, removeTask } = usePlanStore();
   const [newTitle, setNewTitle] = useState("");
+  const [suggestions, setSuggestions] = useState<{ title: string; source: string }[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  const fetchSuggestions = async () => {
+    setLoadingSuggestions(true);
+    try {
+      const r = await apiFetch("/ai/anomalies");
+      if (!r.ok) return;
+      const data = await r.json();
+      const anomalies = Array.isArray(data) ? data : data.anomalies ?? [];
+      setSuggestions(anomalies.slice(0, 5).map((a: any) => ({
+        title: a.title || a.description || a.summary || String(a),
+        source: a.type || a.source || "anomaly",
+      })));
+    } catch { /* ignore */ }
+    finally { setLoadingSuggestions(false); }
+  };
+
+  const acceptSuggestion = async (title: string) => {
+    const r = await fetch(`/api/v1/plan-rooms/${roomId}/tasks`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ title }) });
+    if (r.ok) { addTask(await r.json()); setSuggestions((s) => s.filter((x) => x.title !== title)); }
+  };
 
   const createTask = async () => {
     if (!newTitle.trim()) return;
@@ -297,7 +320,29 @@ function TaskBoard({ roomId }: { roomId: number }) {
         <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createTask()} placeholder="Add task…"
           style={{ flex: 1, background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-primary)", fontSize: 12, padding: "5px 10px", outline: "none" }} />
         <button onClick={createTask} style={{ padding: "5px 12px", borderRadius: 4, background: "var(--green-primary)", color: "var(--bg-app)", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Add</button>
+        <button onClick={fetchSuggestions} disabled={loadingSuggestions}
+          style={{ padding: "5px 10px", borderRadius: 4, background: "rgba(124,77,255,0.12)", border: "1px solid rgba(124,77,255,0.3)", color: "var(--purple-ai)", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+          {loadingSuggestions ? "…" : "✦ AI Suggest"}
+        </button>
       </div>
+      {suggestions.length > 0 && (
+        <div style={{ padding: "4px 16px 8px", borderBottom: "1px solid var(--border)", display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "var(--purple-ai)", alignSelf: "center", marginRight: 4 }}>AI SUGGESTIONS</span>
+          {suggestions.map((s, i) => (
+            <div key={i} style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "4px 8px",
+              background: "rgba(124,77,255,0.06)", border: "1px dashed rgba(124,77,255,0.3)",
+              borderRadius: 4, fontSize: 11, color: "var(--text-secondary)",
+            }}>
+              <span style={{ flex: 1, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+              <button onClick={() => acceptSuggestion(s.title)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--green-primary)", fontSize: 10, fontWeight: 700 }}>Accept</button>
+              <button onClick={() => setSuggestions((prev) => prev.filter((_, j) => j !== i))}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 10 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ flex: 1, overflowX: "auto", display: "flex", gap: 12, padding: 16 }}>
         {TASK_STATUSES.map((status) => (
           <div key={status} style={{ minWidth: 200, flexShrink: 0 }}>
@@ -644,7 +689,7 @@ function TrackedEntitiesPanel() {
                     </span>
                   )}
                 </div>
-                {callsign && (
+                {!!callsign && (
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{te.event.title}</div>
                 )}
                 <div style={{ fontSize: 11, color: "var(--text-secondary)", fontFamily: "var(--font-mono)", marginBottom: secondaryInfo ? 3 : 0 }}>

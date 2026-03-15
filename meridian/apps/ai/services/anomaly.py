@@ -49,9 +49,11 @@ async def _fetch_events(hours: int = 720, limit: int = 5000, category: str | Non
     params: dict[str, Any] = {"hours_back": hours, "limit": limit}
     if category:
         params["category"] = category
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         try:
             resp = await client.get(f"{API_BASE}/events", params=params)
+            if resp.status_code != 200:
+                return []
             data = resp.json()
             return data.get("items", data) if isinstance(data, dict) else data
         except Exception:
@@ -81,7 +83,8 @@ def _bucket_events_by_hour(events: list[dict]) -> dict[str, dict[int, int]]:
     return buckets
 
 
-def _detect_volume_spikes(buckets: dict[str, dict[int, int]], z_threshold: float = 2.5) -> list[dict]:
+def _detect_volume_spikes(buckets: dict[str, dict[int, int]], events: list[dict], z_threshold: float = 2.5) -> list[dict]:
+    now = datetime.now(timezone.utc)
     anomalies = []
     for category, hour_counts in buckets.items():
         baseline_counts = [hour_counts.get(h, 0) for h in range(2, 720)]
@@ -95,6 +98,13 @@ def _detect_volume_spikes(buckets: dict[str, dict[int, int]], z_threshold: float
         recent_count = hour_counts.get(0, 0) + hour_counts.get(1, 0)
         z_score = (recent_count - mean) / std
         if abs(z_score) >= z_threshold:
+            # Collect event IDs from the 2h window for this category
+            event_ids = [
+                e.get("id") for e in events
+                if e.get("category") == category and e.get("id")
+                and (t := _parse_time(e)) is not None
+                and (now - t).total_seconds() <= 7200
+            ][:20]
             anomalies.append({
                 "type": "volume_spike",
                 "category": category,
@@ -104,10 +114,13 @@ def _detect_volume_spikes(buckets: dict[str, dict[int, int]], z_threshold: float
                 "z_score": round(z_score, 2),
                 "direction": "spike" if z_score > 0 else "lull",
                 "severity": "critical" if abs(z_score) >= 4.0 else "high" if abs(z_score) >= 3.0 else "medium",
+                "title": f"{category.title()} Volume {'Spike' if z_score > 0 else 'Drop'}",
                 "description": (
                     f"{category.title()} events {'spiked' if z_score > 0 else 'dropped'} "
                     f"to {recent_count} in last 2h (30-day avg: {mean:.1f}, z={z_score:.1f})"
                 ),
+                "event_ids": event_ids,
+                "detected_at": now.isoformat(),
             })
     return sorted(anomalies, key=lambda x: abs(x["z_score"]), reverse=True)
 
@@ -125,11 +138,13 @@ def _detect_vessel_clustering(events: list[dict], min_vessels: int = 8) -> list[
         cell = (int(e["lat"]), int(e["lng"]))
         grid[cell].append(e)
 
+    now = datetime.now(timezone.utc)
     anomalies = []
     for (lat_cell, lng_cell), cell_events in grid.items():
         if len(cell_events) >= min_vessels:
             center_lat = lat_cell + 0.5
             center_lng = lng_cell + 0.5
+            event_ids = [e.get("id") for e in cell_events if e.get("id")][:20]
             anomalies.append({
                 "type": "vessel_clustering",
                 "category": "maritime",
@@ -137,10 +152,13 @@ def _detect_vessel_clustering(events: list[dict], min_vessels: int = 8) -> list[
                 "lng": center_lng,
                 "vessel_count": len(cell_events),
                 "severity": "high" if len(cell_events) >= 15 else "medium",
+                "title": f"Vessel Cluster ({len(cell_events)} ships)",
                 "description": (
                     f"Unusual vessel concentration: {len(cell_events)} vessels "
                     f"clustered near {center_lat:.1f}°, {center_lng:.1f}°"
                 ),
+                "event_ids": event_ids,
+                "detected_at": now.isoformat(),
             })
     return sorted(anomalies, key=lambda x: x["vessel_count"], reverse=True)[:5]
 
@@ -156,6 +174,7 @@ def _detect_quake_near_nuclear(events: list[dict], radius_km: float = 250.0, min
         and e.get("lat") is not None
         and e.get("lng") is not None
     ]
+    now = datetime.now(timezone.utc)
     anomalies = []
     for q in quakes:
         for fac_lat, fac_lng, fac_name in NUCLEAR_FACILITIES:
@@ -169,15 +188,18 @@ def _detect_quake_near_nuclear(events: list[dict], radius_km: float = 250.0, min
                     "type": "quake_near_nuclear",
                     "category": "environment",
                     "event_id": q.get("id"),
+                    "event_ids": [q.get("id")] if q.get("id") else [],
                     "lat": q["lat"],
                     "lng": q["lng"],
                     "facility": fac_name,
                     "distance_km": round(dist, 1),
                     "severity": "critical" if dist < 50 else "high" if dist < 150 else "medium",
+                    "title": f"Earthquake Near {fac_name}",
                     "description": (
                         f"Earthquake{mag_str} detected {dist:.0f} km from {fac_name}. "
                         f"Seismic monitoring recommended."
                     ),
+                    "detected_at": now.isoformat(),
                 })
     return sorted(anomalies, key=lambda x: x["distance_km"])[:5]
 
@@ -190,8 +212,8 @@ def _detect_osint_cluster(events: list[dict], time_window_min: int = 30, min_sou
     recent = [
         e for e in events
         if e.get("lat") is not None and e.get("lng") is not None
-        and _parse_time(e) is not None
-        and (now - _parse_time(e)).total_seconds() <= time_window_min * 60  # type: ignore[operator]
+        and (t := _parse_time(e)) is not None
+        and (now - t).total_seconds() <= time_window_min * 60
     ]
 
     grid: dict[tuple[int, int], list[dict]] = defaultdict(list)
@@ -199,10 +221,12 @@ def _detect_osint_cluster(events: list[dict], time_window_min: int = 30, min_sou
         cell = (round(e["lat"] / 2) * 2, round(e["lng"] / 2) * 2)
         grid[cell].append(e)
 
+    now = datetime.now(timezone.utc)
     anomalies = []
     for (lat_cell, lng_cell), cell_events in grid.items():
         sources = {e.get("source_id") for e in cell_events}
         if len(sources) >= min_sources:
+            event_ids = [e.get("id") for e in cell_events if e.get("id")][:20]
             anomalies.append({
                 "type": "osint_cluster",
                 "category": "geopolitical",
@@ -212,10 +236,13 @@ def _detect_osint_cluster(events: list[dict], time_window_min: int = 30, min_sou
                 "source_count": len(sources),
                 "sources": list(sources)[:6],
                 "severity": "high" if len(sources) >= 5 else "medium",
+                "title": f"Multi-Source Cluster ({len(sources)} sources)",
                 "description": (
                     f"{len(sources)} independent sources reporting activity "
                     f"near {lat_cell}°, {lng_cell}° within the last 30 minutes."
                 ),
+                "event_ids": event_ids,
+                "detected_at": now.isoformat(),
             })
     return sorted(anomalies, key=lambda x: x["source_count"], reverse=True)[:5]
 
@@ -250,16 +277,21 @@ def _detect_commodity_conflict_correlation(events: list[dict]) -> list[dict]:
             if (t := _parse_time(m)) and abs((c_time - t).total_seconds()) <= window_h * 3600
         ]
         if len(correlated) >= 3:
+            event_ids = [c_event.get("id")] if c_event.get("id") else []
+            event_ids += [e.get("id") for e in correlated if e.get("id")][:19]
             anomalies.append({
                 "type": "commodity_conflict_correlation",
                 "category": "finance",
                 "event_count": len(correlated) + 1,
                 "severity": "high",
+                "title": "Commodity-Conflict Correlation",
                 "description": (
                     f"Commodity market event ('{c_event.get('title', '')[:60]}') "
                     f"correlates with {len(correlated)} high-severity conflict events within ±6h. "
                     f"Possible market impact from escalation."
                 ),
+                "event_ids": event_ids,
+                "detected_at": now.isoformat(),
             })
     return anomalies[:3]
 
@@ -296,16 +328,21 @@ def _detect_bgp_advisory_concurrent(events: list[dict]) -> list[dict]:
             if (t := _parse_time(a)) and abs((bgp_time - t).total_seconds()) <= window_h * 3600  # type: ignore[operator]
         ]
         if concurrent:
+            event_ids = [bgp.get("id")] if bgp.get("id") else []
+            event_ids += [e.get("id") for e in concurrent if e.get("id")][:19]
             anomalies.append({
                 "type": "bgp_advisory_concurrent",
                 "category": "cyber",
                 "event_count": 1 + len(concurrent),
                 "severity": "critical",
+                "title": "BGP + Advisory Concurrent",
                 "description": (
                     f"BGP routing anomaly ('{bgp.get('title', '')[:60]}') detected concurrently "
                     f"with {len(concurrent)} cyber advisory/KEV events. "
                     f"Potential coordinated infrastructure attack."
                 ),
+                "event_ids": event_ids,
+                "detected_at": now.isoformat(),
             })
     return anomalies[:3]
 
@@ -323,7 +360,7 @@ async def run_anomaly_detection() -> list[dict]:
 
     # Type 1: Volume spikes
     buckets = _bucket_events_by_hour(events)
-    all_anomalies.extend(_detect_volume_spikes(buckets))
+    all_anomalies.extend(_detect_volume_spikes(buckets, events))
 
     # Recent events (last 24h) for the remaining detectors
     now = datetime.now(timezone.utc)

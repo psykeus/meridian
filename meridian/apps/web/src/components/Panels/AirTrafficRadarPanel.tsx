@@ -29,24 +29,24 @@ export function AirTrafficRadarPanel() {
 
   return (
     <div className="panel" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <PanelHeader title="Air Traffic Radar" sourceLabel="OpenSky" eventCount={events.length}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <PanelHeader title="Air Traffic Radar" sourceLabel="OpenSky" eventCount={events.length} />
+      <PanelSummaryCard topic="Air Traffic Radar" contextHint="Live aircraft in radius, emergency squawks 7700/7600/7500, and military flight activity" />
+      <div style={{ display: "flex", gap: 16, padding: "8px 12px", borderBottom: "1px solid var(--border)", flexShrink: 0, alignItems: "center" }}>
+        <Kpi label="Airborne" value={events.length} color="var(--blue-track)" />
+        <Kpi label="Emergencies" value={emergencies.length} color={emergencies.length > 0 ? "var(--red-critical)" : "var(--text-muted)"} />
+        <div style={{ display: "flex", alignItems: "center", gap: 3, marginLeft: "auto" }}>
+          <span style={{ fontSize: 9, color: "var(--text-muted)", marginRight: 2 }}>RADIUS</span>
           {([25, 50, 100, 250] as Radius[]).map((r) => (
             <button key={r} onClick={() => setRadius(r)}
-              style={{ padding: "2px 6px", fontSize: 9, fontWeight: 700, borderRadius: 3, border: "1px solid",
+              style={{ padding: "3px 5px", fontSize: 9, fontWeight: 700, borderRadius: 3, border: "1px solid",
                 borderColor: radius === r ? "var(--green-primary)" : "var(--border)",
                 background: radius === r ? "rgba(0,230,118,0.1)" : "transparent",
-                color: radius === r ? "var(--green-primary)" : "var(--text-muted)", cursor: "pointer" }}>
-              {r}mi
+                color: radius === r ? "var(--green-primary)" : "var(--text-muted)",
+                cursor: "pointer", lineHeight: 1, minWidth: 24, textAlign: "center" as const }}>
+              {r}
             </button>
           ))}
         </div>
-      </PanelHeader>
-      <PanelSummaryCard topic="Air Traffic Radar" contextHint="Live aircraft in radius, emergency squawks 7700/7600/7500, and military flight activity" />
-      <div style={{ display: "flex", gap: 16, padding: "8px 12px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-        <Kpi label="Airborne" value={events.length} color="var(--blue-track)" />
-        <Kpi label="Emergencies" value={emergencies.length} color={emergencies.length > 0 ? "var(--red-critical)" : "var(--text-muted)"} />
-        <Kpi label="Radius" value={`${radius}mi`} color="var(--text-muted)" />
       </div>
 
       {emergencies.length > 0 && (

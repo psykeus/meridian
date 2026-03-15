@@ -1,7 +1,8 @@
-"""Plan Room exports — JSON data pack, GeoJSON, KML, and shareable read-only links."""
+"""Plan Room exports — JSON data pack, GeoJSON, KML, PDF, and shareable read-only links."""
 import io
 import json
 import secrets
+import zlib
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -115,6 +116,20 @@ async def export_kml(room_id: int, current_user: CurrentUser, db: AsyncSession =
     )
 
 
+# ─── PDF Report ──────────────────────────────────────────────────────────────
+
+@router.get("/{room_id}/export/pdf")
+async def export_pdf(room_id: int, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    room = await _get_room_or_404(room_id, current_user.id, db)
+    pack = await _build_data_pack(room, room_id, db)
+    pdf_bytes = _generate_pdf_report(pack)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="room_{room_id}.pdf"'},
+    )
+
+
 # ─── Shareable Read-Only Links ────────────────────────────────────────────────
 
 @router.post("/{room_id}/share", response_model=ShareableLinkResponse, status_code=201)
@@ -180,7 +195,7 @@ async def view_shared_room(token: str, db: AsyncSession = Depends(get_db)):
 
     await db.execute(
         update(ShareableLink).where(ShareableLink.id == link.id)
-        .values(view_count=link.view_count + 1)
+        .values(view_count=ShareableLink.view_count + 1)
     )
     await db.commit()
 
@@ -214,7 +229,11 @@ async def _build_data_pack(room: PlanRoom | None, room_id: int, db: AsyncSession
     )).scalars().all()
 
     def _ser(obj) -> dict:
-        return {c.key: getattr(obj, c.key) for c in obj.__table__.columns}
+        out = {}
+        for c in obj.__table__.columns:
+            val = getattr(obj, c.key)
+            out[c.key] = val.isoformat() if hasattr(val, "isoformat") else val
+        return out
 
     return {
         "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -229,3 +248,263 @@ async def _build_data_pack(room: PlanRoom | None, room_id: int, db: AsyncSession
 
 def _xml_escape(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+
+
+def _pdf_escape(text: str) -> str:
+    """Escape special PDF string characters."""
+    return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _generate_pdf_report(pack: dict) -> bytes:
+    """Generate a minimal valid PDF 1.4 document with text-only content.
+
+    Uses raw PDF syntax — no external libraries required.  The approach:
+    build a single content stream of text-drawing operators, wrap it in the
+    required PDF object graph (catalog, pages, page, font, stream), and
+    emit a correct cross-reference table + trailer.
+    """
+
+    room = pack.get("room", {})
+    room_name = str(room.get("name", "Untitled Plan Room"))
+    room_desc = str(room.get("description", "") or "")
+    exported_at = pack.get("exported_at", datetime.now(timezone.utc).isoformat())
+
+    # ── Build text lines ──────────────────────────────────────────────────
+    PAGE_WIDTH = 612   # US Letter
+    PAGE_HEIGHT = 792
+    MARGIN = 50
+    USABLE_WIDTH = PAGE_WIDTH - 2 * MARGIN
+    LINE_HEIGHT_BODY = 14
+    LINE_HEIGHT_HEADING = 20
+
+    lines: list[tuple[str, float, str]] = []  # (text, font_size, style)
+
+    def _add_heading(text: str) -> None:
+        lines.append(("", 8, "body"))  # spacer
+        lines.append((text, 14, "bold"))
+        lines.append(("", 4, "body"))  # small gap
+
+    def _add_line(text: str, size: float = 10) -> None:
+        lines.append((text, size, "body"))
+
+    def _add_separator() -> None:
+        lines.append(("---", 6, "body"))
+
+    def _wrap(text: str, max_chars: int = 90) -> list[str]:
+        """Word-wrap a string into lines of at most max_chars."""
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        result: list[str] = []
+        for paragraph in text.split("\n"):
+            if not paragraph.strip():
+                result.append("")
+                continue
+            words = paragraph.split()
+            cur = ""
+            for w in words:
+                if cur and len(cur) + 1 + len(w) > max_chars:
+                    result.append(cur)
+                    cur = w
+                else:
+                    cur = f"{cur} {w}" if cur else w
+            if cur:
+                result.append(cur)
+        return result
+
+    # Title page content
+    _add_line(room_name, 18)
+    if room_desc:
+        for wl in _wrap(room_desc, 80):
+            _add_line(wl, 10)
+    _add_line(f"Exported: {exported_at}", 9)
+    _add_separator()
+
+    # Annotations
+    annotations = pack.get("annotations", [])
+    _add_heading(f"ANNOTATIONS ({len(annotations)})")
+    if not annotations:
+        _add_line("  No annotations.")
+    for ann in annotations:
+        label = str(ann.get("label") or ann.get("annotation_type", ""))
+        atype = str(ann.get("annotation_type", ""))
+        notes = str(ann.get("notes") or "")
+        _add_line(f"  [{atype}] {label}")
+        if notes:
+            for wl in _wrap(notes, 85):
+                _add_line(f"    {wl}", 9)
+
+    # Timeline
+    timeline = pack.get("timeline", [])
+    _add_heading(f"TIMELINE ({len(timeline)})")
+    if not timeline:
+        _add_line("  No timeline entries.")
+    for entry in timeline:
+        title = str(entry.get("title", ""))
+        etime = str(entry.get("entry_time", ""))
+        body = str(entry.get("body") or "")
+        source = str(entry.get("source_label") or "")
+        prefix = f"  [{source}] " if source else "  "
+        _add_line(f"{prefix}{title}  ({etime})")
+        if body:
+            for wl in _wrap(body, 85):
+                _add_line(f"    {wl}", 9)
+
+    # Tasks
+    tasks = pack.get("tasks", [])
+    _add_heading(f"TASKS ({len(tasks)})")
+    if not tasks:
+        _add_line("  No tasks.")
+    for task in tasks:
+        title = str(task.get("title", ""))
+        task_status = str(task.get("status", ""))
+        priority = str(task.get("priority", ""))
+        notes = str(task.get("notes") or "")
+        _add_line(f"  [{task_status.upper()}] [{priority.upper()}] {title}")
+        if notes:
+            for wl in _wrap(notes, 85):
+                _add_line(f"    {wl}", 9)
+
+    # Watch list
+    watch = pack.get("watch_list", [])
+    if watch:
+        _add_heading(f"WATCH LIST ({len(watch)})")
+        for w in watch:
+            wname = str(w.get("name") or w.get("entity_name", ""))
+            wtype = str(w.get("entity_type", ""))
+            _add_line(f"  [{wtype}] {wname}")
+
+    # Intel notes
+    intel = pack.get("intel_notes", [])
+    if intel:
+        _add_heading(f"INTEL NOTES ({len(intel)})")
+        for note in intel:
+            ntitle = str(note.get("title", ""))
+            classification = str(note.get("classification", ""))
+            nbody = str(note.get("body") or "")
+            pinned = "PINNED " if note.get("is_pinned") else ""
+            _add_line(f"  {pinned}[{classification.upper()}] {ntitle}")
+            if nbody:
+                for wl in _wrap(nbody, 85):
+                    _add_line(f"    {wl}", 9)
+
+    # ── Paginate lines ────────────────────────────────────────────────────
+    max_y = PAGE_HEIGHT - MARGIN
+    min_y = MARGIN
+    # Each entry: (text, x, y, font_size, style)
+    pages_content: list[list[tuple[str, float, float, float, str]]] = []
+    current_page: list[tuple[str, float, float, float, str]] = []
+    y = max_y - 20  # start below top margin
+
+    for text, size, style in lines:
+        line_h = LINE_HEIGHT_HEADING if style == "bold" else LINE_HEIGHT_BODY
+        if size >= 16:
+            line_h = 24
+        y -= line_h
+        if y < min_y:
+            pages_content.append(current_page)
+            current_page = []
+            y = max_y - 20 - line_h
+        current_page.append((text, MARGIN, y, size, style))
+
+    if current_page:
+        pages_content.append(current_page)
+    if not pages_content:
+        pages_content.append([("(empty report)", MARGIN, max_y - 40, 10.0, "body")])
+
+    # ── Build PDF objects ──────────────────────────────────────────────────
+    objects: list[bytes] = []  # 1-indexed (objects[0] is obj 1)
+
+    def _obj(content: str) -> int:
+        idx = len(objects) + 1
+        objects.append(f"{idx} 0 obj\n{content}\nendobj\n".encode("latin-1"))
+        return idx
+
+    def _stream_obj(stream_bytes: bytes, extra_dict: str = "") -> int:
+        idx = len(objects) + 1
+        compressed = zlib.compress(stream_bytes)
+        header = (
+            f"{idx} 0 obj\n<< /Length {len(compressed)} "
+            f"/Filter /FlateDecode {extra_dict}>>\nstream\n"
+        )
+        objects.append(
+            header.encode("latin-1") + compressed + b"\nendstream\nendobj\n"
+        )
+        return idx
+
+    # Obj 1: Catalog
+    catalog_id = _obj("<< /Type /Catalog /Pages 2 0 R >>")
+
+    # Reserve obj 2 for Pages (we'll fill page refs after creating pages)
+    objects.append(b"")  # placeholder for obj 2
+    pages_obj_id = 2
+
+    # Obj 3: Font (Helvetica)
+    font_regular_id = _obj(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+    )
+    font_bold_id = _obj(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
+    )
+
+    page_obj_ids: list[int] = []
+    for page_lines in pages_content:
+        # Build content stream
+        stream_parts: list[str] = ["BT\n"]
+        for text, x, y_pos, font_size, style in page_lines:
+            if text == "---":
+                # Draw a separator line via stroke (end text, draw, restart text)
+                stream_parts.append("ET\n")
+                stream_parts.append(
+                    f"0.6 0.6 0.6 RG\n"
+                    f"0.5 w\n"
+                    f"{MARGIN} {y_pos + 4} m {MARGIN + USABLE_WIDTH} {y_pos + 4} l S\n"
+                )
+                stream_parts.append("BT\n")
+                continue
+            font_ref = "/F2" if style == "bold" else "/F1"
+            escaped = _pdf_escape(text)
+            stream_parts.append(
+                f"{font_ref} {font_size} Tf\n{x} {y_pos} Td\n({escaped}) Tj\n0 0 Td\n"
+            )
+        stream_parts.append("ET\n")
+        stream_data = "".join(stream_parts).encode("latin-1", errors="replace")
+
+        content_id = _stream_obj(stream_data)
+
+        # Page object
+        page_id = _obj(
+            f"<< /Type /Page /Parent {pages_obj_id} 0 R "
+            f"/MediaBox [0 0 {PAGE_WIDTH} {PAGE_HEIGHT}] "
+            f"/Contents {content_id} 0 R "
+            f"/Resources << /Font << /F1 {font_regular_id} 0 R /F2 {font_bold_id} 0 R >> >> >>"
+        )
+        page_obj_ids.append(page_id)
+
+    # Fill in Pages object (obj 2)
+    kids = " ".join(f"{pid} 0 R" for pid in page_obj_ids)
+    objects[1] = (
+        f"2 0 obj\n<< /Type /Pages /Kids [{kids}] /Count {len(page_obj_ids)} >>\nendobj\n"
+    ).encode("latin-1")
+
+    # ── Serialize ─────────────────────────────────────────────────────────
+    buf = io.BytesIO()
+    buf.write(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")  # header + binary comment
+
+    offsets: list[int] = []
+    for obj_bytes in objects:
+        offsets.append(buf.tell())
+        buf.write(obj_bytes)
+
+    xref_start = buf.tell()
+    buf.write(b"xref\n")
+    buf.write(f"0 {len(objects) + 1}\n".encode())
+    buf.write(b"0000000000 65535 f \n")
+    for offset in offsets:
+        buf.write(f"{offset:010d} 00000 n \n".encode())
+
+    buf.write(b"trailer\n")
+    buf.write(f"<< /Size {len(objects) + 1} /Root {catalog_id} 0 R >>\n".encode())
+    buf.write(b"startxref\n")
+    buf.write(f"{xref_start}\n".encode())
+    buf.write(b"%%EOF\n")
+
+    return buf.getvalue()

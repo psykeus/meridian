@@ -44,10 +44,29 @@ def get_credential(key: str) -> str:
     return _cache.get(key) or os.environ.get(key, "")
 
 
+# Only these credential key names are exposed via the API.
+# Prevents leaking env vars like DATABASE_URL, SECRET_KEY, PATH, etc.
+_CREDENTIAL_ALLOWLIST = {
+    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY",
+    "LLM_MODEL", "LLM_PROVIDER",
+    "OPENSKY_CLIENT_ID", "OPENSKY_CLIENT_SECRET",
+    "ACLED_API_KEY", "ACLED_EMAIL",
+    "SPACETRACK_USERNAME", "SPACETRACK_PASSWORD",
+    "ALPHA_VANTAGE_API_KEY", "FINNHUB_API_KEY",
+    "REDDIT_CLIENT_ID", "REDDIT_CLIENT_SECRET",
+    "CLOUDFLARE_API_TOKEN",
+    "COPERNICUS_API_KEY",
+    "FLIGHTAWARE_API_KEY",
+    "AISSTREAM_API_KEY",
+    "NASA_API_KEY",
+    "SENDGRID_API_KEY",
+}
+
+
 def list_configured() -> list[str]:
-    """Return all env-var names that have a non-empty value (DB or env)."""
-    all_keys: set[str] = set(_cache.keys()) | set(os.environ.keys())
-    return [k for k in all_keys if get_credential(k)]
+    """Return credential key names that have a non-empty value (DB or env).
+    Only returns keys from the allowlist to prevent leaking sensitive env vars."""
+    return [k for k in _CREDENTIAL_ALLOWLIST if get_credential(k)]
 
 
 async def set_credential(key: str, value: str) -> None:

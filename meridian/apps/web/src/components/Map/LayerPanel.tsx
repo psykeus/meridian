@@ -3,9 +3,10 @@ import { ALL_LAYERS, LAYER_GROUPS, type LayerGroup } from "@/config/layers";
 import { useLayoutStore } from "@/stores/useLayoutStore";
 
 export function LayerPanel() {
-  const { activeLayers, toggleLayer, isLayerPanelOpen, toggleLayerPanel } = useLayoutStore();
+  const { activeLayers, toggleLayer, isLayerPanelOpen, toggleLayerPanel, layerOpacity, setLayerOpacity, customFilters, activeFilterId, saveLayersToActiveFilter, showTracks, setShowTracks } = useLayoutStore();
+  const activeFilter = customFilters.find((f) => f.id === activeFilterId);
   const [expandedGroups, setExpandedGroups] = useState<Set<LayerGroup>>(
-    new Set(["environment", "security", "aviation", "maritime"])
+    new Set(["environment", "security", "aviation", "maritime", "space"])
   );
   const [search, setSearch] = useState("");
 
@@ -72,6 +73,30 @@ export function LayerPanel() {
           </button>
         </div>
 
+        {activeFilter && (
+          <div style={{
+            padding: "6px 12px", borderBottom: "1px solid var(--border)", flexShrink: 0,
+            display: "flex", alignItems: "center", gap: 6,
+            background: "rgba(0,230,118,0.06)",
+          }}>
+            <span style={{ fontSize: 12 }}>{activeFilter.icon}</span>
+            <span style={{ flex: 1, fontSize: 11, fontWeight: 600, color: "var(--green-primary)" }}>
+              {activeFilter.name}
+            </span>
+            <button
+              onClick={saveLayersToActiveFilter}
+              title="Save current layer selection to this filter"
+              style={{
+                padding: "2px 8px", fontSize: 10, fontWeight: 600,
+                background: "var(--green-primary)", color: "var(--bg-app)",
+                border: "none", borderRadius: 3, cursor: "pointer",
+              }}
+            >
+              Save
+            </button>
+          </div>
+        )}
+
         <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
           <input
             value={search}
@@ -119,46 +144,81 @@ export function LayerPanel() {
 
                   {isExpanded && layers.map((layer) => {
                     const active = activeLayers.has(layer.id);
+                    const opacity = layerOpacity[layer.id] ?? 1;
                     return (
-                      <label
-                        key={layer.id}
-                        title={layer.description}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 8,
-                          padding: "5px 12px 5px 24px",
-                          cursor: "pointer",
-                          background: active ? "var(--bg-hover)" : "transparent",
-                          transition: "background 100ms",
-                        }}
-                      >
-                        <span
+                      <div key={layer.id}>
+                        <label
+                          title={layer.description}
                           style={{
-                            fontSize: 13, flexShrink: 0, lineHeight: 1,
-                            opacity: active ? 1 : 0.35,
-                            filter: active ? `drop-shadow(0 0 4px ${layer.color}99)` : "none",
-                            transition: "opacity 150ms, filter 150ms",
+                            display: "flex", alignItems: "center", gap: 8,
+                            padding: "5px 12px 5px 24px",
+                            cursor: "pointer",
+                            background: active ? "var(--bg-hover)" : "transparent",
+                            transition: "background 100ms",
                           }}
                         >
-                          {layer.icon}
-                        </span>
-                        <span style={{ flex: 1, fontSize: 12, color: active ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                          {layer.label}
-                        </span>
-                        <div
-                          style={{
-                            width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                            background: active ? layer.color : "transparent",
-                            border: `1px solid ${active ? layer.color : "var(--border)"}`,
-                            transition: "background 150ms",
-                          }}
-                        />
-                        <input
-                          type="checkbox"
-                          checked={active}
-                          onChange={() => toggleLayer(layer.id)}
-                          style={{ display: "none" }}
-                        />
-                      </label>
+                          <span
+                            style={{
+                              fontSize: 13, flexShrink: 0, lineHeight: 1,
+                              opacity: active ? opacity : 0.35,
+                              filter: active ? `drop-shadow(0 0 4px ${layer.color}99)` : "none",
+                              transition: "opacity 150ms, filter 150ms",
+                            }}
+                          >
+                            {layer.icon}
+                          </span>
+                          <span style={{ flex: 1, fontSize: 12, color: active ? "var(--text-primary)" : "var(--text-secondary)", display: "flex", alignItems: "center", gap: 4 }}>
+                            {layer.label}
+                            {layer.renderMode === "geojson" && (
+                              <span style={{ fontSize: 8, padding: "0 3px", borderRadius: 2, background: "var(--border)", color: "var(--text-muted)", fontWeight: 600, lineHeight: "14px" }}>GEO</span>
+                            )}
+                            {layer.renderMode === "tiles" && (
+                              <span style={{ fontSize: 8, padding: "0 3px", borderRadius: 2, background: "var(--border)", color: "var(--text-muted)", fontWeight: 600, lineHeight: "14px" }}>TILE</span>
+                            )}
+                            {layer.minZoom && layer.minZoom > 2 && (
+                              <span style={{ fontSize: 8, padding: "0 3px", borderRadius: 2, background: "var(--border)", color: "var(--text-muted)", fontWeight: 600, lineHeight: "14px" }}>z{layer.minZoom}+</span>
+                            )}
+                          </span>
+                          <div
+                            onClick={active && layer.supportsTrack ? (e) => { e.preventDefault(); e.stopPropagation(); setShowTracks(layer.id, !showTracks[layer.id]); } : undefined}
+                            title={active && layer.supportsTrack ? (showTracks[layer.id] ? "Hide tracks" : "Show tracks") : undefined}
+                            style={{
+                              width: 20, height: 20, borderRadius: "50%", flexShrink: 0,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              cursor: active && layer.supportsTrack ? "pointer" : "default",
+                              background: active && layer.supportsTrack && showTracks[layer.id] ? layer.color + "22" : "transparent",
+                              border: active && layer.supportsTrack && showTracks[layer.id] ? "1.5px solid #888" : "1.5px solid transparent",
+                              transition: "all 150ms",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                                background: active ? layer.color : "transparent",
+                                border: `1px solid ${active ? layer.color : "var(--border)"}`,
+                                transition: "background 150ms",
+                              }}
+                            />
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={active}
+                            onChange={() => toggleLayer(layer.id)}
+                            style={{ display: "none" }}
+                          />
+                        </label>
+                        {active && (
+                          <div style={{ padding: "2px 12px 4px 36px", display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 9, color: "var(--text-muted)", width: 28, flexShrink: 0 }}>{Math.round(opacity * 100)}%</span>
+                            <input
+                              type="range" min="0.05" max="1" step="0.05"
+                              value={opacity}
+                              onChange={(e) => setLayerOpacity(layer.id, parseFloat(e.target.value))}
+                              style={{ flex: 1, height: 2, accentColor: layer.color, cursor: "pointer" }}
+                            />
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from core.config import get_settings
+from core.credential_store import get_credential
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 from workers.base import FeedWorker
 
@@ -24,17 +24,16 @@ class ACLEDConflictWorker(FeedWorker):
     category = FeedCategory.geopolitical
     refresh_interval = 3600
 
-    def __init__(self) -> None:
-        self._settings = get_settings()
-
     async def fetch(self) -> list[GeoEvent]:
-        if not self._settings.acled_api_key or not self._settings.acled_email:
+        acled_key = get_credential("ACLED_API_KEY")
+        acled_email = get_credential("ACLED_EMAIL")
+        if not acled_key or not acled_email:
             return []
 
         start_date = (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d")
         params = {
-            "key": self._settings.acled_api_key,
-            "email": self._settings.acled_email,
+            "key": acled_key,
+            "email": acled_email,
             "event_date": start_date,
             "event_date_where": ">=",
             "limit": 500,

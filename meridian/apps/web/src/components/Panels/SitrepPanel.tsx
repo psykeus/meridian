@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { apiFetch } from "@/lib/api";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 
 type Phase = "idle" | "scanning" | "drilling" | "assembling" | "complete";
@@ -13,6 +14,26 @@ const PHASE_LABEL: Record<Phase, string> = {
 };
 
 const PHASE_ORDER: Phase[] = ["scanning", "drilling", "assembling", "complete"];
+
+function parseReportSections(report: string): ReportSection[] {
+  const sections: ReportSection[] = [];
+  const lines = report.split("\n");
+  let heading = "Executive Summary";
+  let content = "";
+
+  for (const line of lines) {
+    const headingMatch = line.match(/^#{1,4}\s+(.+)/);
+    if (headingMatch) {
+      if (content.trim()) sections.push({ heading, content: content.trim() });
+      heading = headingMatch[1].replace(/\*+/g, "").trim();
+      content = "";
+    } else {
+      content += line + "\n";
+    }
+  }
+  if (content.trim()) sections.push({ heading, content: content.trim() });
+  return sections;
+}
 
 export function SitrepPanel() {
   const [topic, setTopic] = useState("");
@@ -35,55 +56,20 @@ export function SitrepPanel() {
     const phaseTimer = setInterval(advance, 4000);
 
     try {
-      const res = await fetch("/ai/report", {
+      const res = await apiFetch("/ai/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: topic.trim(), stream: true }),
+        body: JSON.stringify({ topic: topic.trim() }),
         signal: abortRef.current.signal,
       });
       clearInterval(phaseTimer);
-      setPhase("complete");
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      if (!res.body) throw new Error("No response body");
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let currentHeading = "Executive Summary";
-      let currentContent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          const data = line.startsWith("data: ") ? line.slice(6) : line;
-          if (!data || data === "[DONE]") continue;
-          try {
-            const chunk = JSON.parse(data);
-            const token: string = chunk?.choices?.[0]?.delta?.content ?? chunk?.content ?? data;
-            if (token.startsWith("##")) {
-              if (currentContent.trim()) setSections((s) => [...s, { heading: currentHeading, content: currentContent.trim() }]);
-              currentHeading = token.replace(/^#+\s*/, "").trim();
-              currentContent = "";
-            } else {
-              currentContent += token;
-              setSections((s) => {
-                const next = [...s];
-                if (next.length > 0 && next[next.length - 1].heading === currentHeading) {
-                  next[next.length - 1] = { heading: currentHeading, content: currentContent.trim() };
-                } else {
-                  next.push({ heading: currentHeading, content: currentContent.trim() });
-                }
-                return next;
-              });
-            }
-          } catch { /* non-JSON chunk */ }
-        }
-      }
+      const data = await res.json();
+      const report: string = data.report || "";
+      setSections(parseReportSections(report));
+      setPhase("complete");
     } catch (err: unknown) {
       clearInterval(phaseTimer);
       if ((err as Error).name !== "AbortError") setError((err as Error).message);

@@ -17,6 +17,8 @@ from models.watch_list import WatchListEntity, IntelNote  # noqa: F401
 from models.org import Organization, OrganizationMember, APIToken, AuditLog  # noqa: F401
 from models.collab import AnnotationComment, ShareableLink  # noqa: F401
 from models.chat import ChatSession, ChatMessage, UserReadingHistory  # noqa: F401
+from models.prompt_config import PromptConfig  # noqa: F401
+from models.user_ai_key import UserAIKey  # noqa: F401
 from core.database import Base
 
 config = context.config
@@ -28,6 +30,8 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
+    if url := os.environ.get("DATABASE_URL"):
+        return url
     return (
         f"postgresql+asyncpg://"
         f"{os.environ.get('DB_USER', 'meridian')}:"

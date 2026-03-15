@@ -8,6 +8,7 @@ import httpx
 from core.credential_store import get_credential
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 from workers.base import FeedWorker
+from workers._orbit_propagation import tle_from_gp_json, propagate_tle
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class SpaceTrackSatellitesWorker(FeedWorker):
             logger.warning("spacetrack_skip: missing SPACETRACK_USERNAME or SPACETRACK_PASSWORD")
             return []
 
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
             # Authenticate — Space-Track uses session cookies
             login_resp = await client.post(
                 _LOGIN_URL,
@@ -86,15 +87,16 @@ class SpaceTrackSatellitesWorker(FeedWorker):
             # Severity: medium for decaying objects, info for tracked
             severity = SeverityLevel.medium if is_decaying else SeverityLevel.info
 
-            # Use inclination to approximate a ground-track latitude;
-            # fall back to JPL/VAFB area coords
+            # Generate TLE and propagate position from GP JSON
+            tle_line1, tle_line2 = "", ""
+            lat, lng = 34.05, -118.24  # fallback: JPL/Vandenberg
             try:
-                lat = float(inclination) if inclination is not None else 34.05
-                # Clamp latitude to valid range
-                lat = max(-90.0, min(90.0, lat))
-            except (ValueError, TypeError):
-                lat = 34.05
-            lng = -118.24  # JPL / Vandenberg area
+                tle_line1, tle_line2 = tle_from_gp_json(rec)
+                pos = propagate_tle(tle_line1, tle_line2, now)
+                if pos:
+                    lat, lng = pos[0], pos[1]
+            except Exception:
+                tle_line1, tle_line2 = "", ""
 
             status_label = "DECAYING" if is_decaying else "ACTIVE"
             title = f"{object_name} [{status_label}]"
@@ -138,6 +140,8 @@ class SpaceTrackSatellitesWorker(FeedWorker):
                         "mean_motion": mean_motion,
                         "rcs_size": rcs_size,
                         "epoch": epoch_str,
+                        "tle_line1": tle_line1,
+                        "tle_line2": tle_line2,
                     },
                 )
             )

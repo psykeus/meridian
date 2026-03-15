@@ -42,6 +42,7 @@ class ProMEDRSSWorker(FeedWorker):
     display_name = "ProMED Disease Alerts"
     category = FeedCategory.humanitarian
     refresh_interval = 1800
+    run_on_startup = False
     _rss_url = "https://promedmail.org/feed/"
 
     async def fetch(self) -> list[GeoEvent]:

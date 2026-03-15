@@ -216,12 +216,12 @@ function CommentThread({ roomId, annotationId }: { roomId: number; annotationId:
   const [body, setBody] = useState("");
   const [posting, setPosting] = useState(false);
 
-  const authHeader = { Authorization: `Bearer ${localStorage.getItem("access_token") ?? ""}` };
   const base = `/api/v1/plan-rooms/${roomId}/annotations/${annotationId}/comments`;
+  const getAuth = () => ({ Authorization: `Bearer ${localStorage.getItem("access_token") ?? ""}` });
 
   const fetchComments = useCallback(async () => {
     try {
-      const resp = await fetch(base, { headers: authHeader });
+      const resp = await fetch(base, { headers: getAuth() });
       if (resp.ok) setComments(await resp.json());
     } catch {}
     finally { setLoading(false); }
@@ -235,7 +235,7 @@ function CommentThread({ roomId, annotationId }: { roomId: number; annotationId:
     try {
       const resp = await fetch(base, {
         method: "POST",
-        headers: { ...authHeader, "Content-Type": "application/json" },
+        headers: { ...getAuth(), "Content-Type": "application/json" },
         body: JSON.stringify({ body: body.trim() }),
       });
       if (resp.ok) {
@@ -248,7 +248,7 @@ function CommentThread({ roomId, annotationId }: { roomId: number; annotationId:
   };
 
   const handleDelete = async (commentId: number) => {
-    await fetch(`${base}/${commentId}`, { method: "DELETE", headers: authHeader });
+    await fetch(`${base}/${commentId}`, { method: "DELETE", headers: getAuth() });
     setComments((prev) => prev.filter((c) => c.id !== commentId));
   };
 

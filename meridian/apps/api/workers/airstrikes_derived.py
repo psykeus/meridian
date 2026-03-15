@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from core.config import get_settings
+from core.credential_store import get_credential
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 from workers.base import FeedWorker
 
@@ -52,11 +52,10 @@ class AirstrikesDerivedWorker(FeedWorker):
     category = FeedCategory.military
     refresh_interval = 3600  # 1 hour
 
-    def __init__(self) -> None:
-        self._settings = get_settings()
-
     async def fetch(self) -> list[GeoEvent]:
-        if not self._settings.acled_api_key or not self._settings.acled_email:
+        acled_key = get_credential("ACLED_API_KEY")
+        acled_email = get_credential("ACLED_EMAIL")
+        if not acled_key or not acled_email:
             logger.debug("airstrikes_derived_skip: missing ACLED credentials")
             return []
 
@@ -64,8 +63,8 @@ class AirstrikesDerivedWorker(FeedWorker):
             "%Y-%m-%d"
         )
         params = {
-            "key": self._settings.acled_api_key,
-            "email": self._settings.acled_email,
+            "key": acled_key,
+            "email": acled_email,
             "event_date": start_date,
             "event_date_where": ">=",
             "event_type": "Explosions/Remote violence",

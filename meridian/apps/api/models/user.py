@@ -53,7 +53,6 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     is_verified: bool
     totp_enabled: bool = False
-    tier: str
     created_at: datetime
 
     model_config = {"from_attributes": True}

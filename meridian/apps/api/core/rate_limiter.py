@@ -1,4 +1,4 @@
-"""Redis-based rate limiting middleware. Tier-based: free=60/min, pro=300/min, enterprise=1000/min."""
+"""Redis-based rate limiting middleware. Flat limits: 600/min authenticated, 120/min anonymous."""
 
 import time
 import logging
@@ -10,19 +10,40 @@ from core.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
-TIER_LIMITS: dict[str, int] = {
-    "free": 60,
-    "pro": 300,
-    "team": 600,
-    "enterprise": 1000,
-    "unlimited": 99999,
-}
+RATE_LIMIT_AUTHENTICATED = 600  # per user per minute
+RATE_LIMIT_ANONYMOUS = 120      # per IP per minute
 
 # Paths that bypass rate limiting
 BYPASS_PREFIXES = ("/health", "/ws/", "/docs", "/openapi.json")
 
 
+def _extract_user_from_jwt(request: Request) -> str | None:
+    """Extract user_id from the Authorization header JWT.
+
+    Returns user_id or None if no valid JWT is found.
+    """
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:]
+    try:
+        from core.security import decode_token
+        payload = decode_token(token)
+        if payload and payload.get("type") == "access":
+            return payload.get("sub")
+    except Exception:
+        pass
+    return None
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
+    async def __call__(self, scope, receive, send):
+        # BaseHTTPMiddleware breaks WebSocket connections — bypass entirely
+        if scope["type"] == "websocket":
+            await self.app(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
@@ -30,19 +51,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(p) for p in BYPASS_PREFIXES):
             return await call_next(request)
 
-        # Identify caller: prefer user_id from JWT, fall back to IP
-        key_id = request.client.host if request.client else "unknown"
-        tier = "free"
+        # Identify caller: extract user_id from JWT, fall back to IP
+        ip = request.client.host if request.client else "unknown"
+        user_id = _extract_user_from_jwt(request)
 
-        # Try to extract user info from state (set by auth dependency)
-        if hasattr(request.state, "user_id"):
-            key_id = f"user:{request.state.user_id}"
-            tier = getattr(request.state, "user_tier", "free")
+        if user_id:
+            key_id = f"user:{user_id}"
+            limit = RATE_LIMIT_AUTHENTICATED
         else:
-            # For unauthenticated requests, use IP
-            key_id = f"ip:{key_id}"
+            key_id = f"ip:{ip}"
+            limit = RATE_LIMIT_ANONYMOUS
 
-        limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
         window = 60  # 1-minute window
 
         try:

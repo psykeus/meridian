@@ -186,8 +186,8 @@ async def list_room_members(
 
 @router.post("/{room_id}/members/{user_id}", status_code=201)
 async def add_room_member(
-    room_id: int, user_id: int, role: str = "analyst",
-    current_user: CurrentUser = None, db: AsyncSession = Depends(get_db)
+    room_id: int, user_id: int, current_user: CurrentUser,
+    role: str = "analyst", db: AsyncSession = Depends(get_db),
 ) -> dict:
     from models.plan_room import PlanRoom, PlanRoomMember
     room = await _get_room_or_404(room_id, current_user.id, db)

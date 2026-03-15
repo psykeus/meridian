@@ -14,20 +14,21 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
-    "maplibre-gl": "^4.7.1",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "globe.gl": "^2.31.0",
+    "lucide-react": "^0.468.0",
+    "maplibre-gl": "^5.20.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-grid-layout": "^1.4.4",
     "react-router-dom": "^6.28.0",
-    "zustand": "^5.0.2",
-    "lucide-react": "^0.468.0",
-    "date-fns": "^4.1.0",
-    "clsx": "^2.1.1",
     "recharts": "^2.13.3",
+    "satellite.js": "^6.0.2",
     "socket.io-client": "^4.8.1",
-    "yjs": "^13.6.20",
     "y-websocket": "^2.1.0",
-    "globe.gl": "^2.31.0"
+    "yjs": "^13.6.20",
+    "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

@@ -2,7 +2,8 @@ import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
 import { useFilteredEvents } from "@/stores/useFilteredEvents";
-import { SEVERITY_COLOR, timeAgo } from "@/lib/utils";
+import { useArticleStore } from "@/stores/useArticleStore";
+import { timeAgo } from "@/lib/utils";
 import type { GeoEvent } from "@/types";
 
 export function GlobalNewsFeedPanel() {
@@ -11,19 +12,25 @@ export function GlobalNewsFeedPanel() {
     .filter((e) => e.source_id === "rss_news" || e.source_id === "gdelt")
     .slice(0, 100);
   const setSelectedEvent = useEventStore((s) => s.setSelectedEvent);
+  const openArticle = useArticleStore((s) => s.open);
 
   return (
     <div className="panel" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <PanelHeader
         title="Global News Feed"
-        sourceLabel="Reuters · AP · BBC"
+        sourceLabel="30+ Global Sources"
         eventCount={events.length}
       />
       <PanelSummaryCard topic="Global News Feed" contextHint="Current geopolitical news, conflict reports, and GDELT event signals" />
       <div style={{ flex: 1, overflowY: "auto" }}>
         {events.length === 0
           ? <EmptyState message="No news events yet" />
-          : events.map((e) => <NewsRow key={e.id} event={e} onClick={() => setSelectedEvent(e)} />)
+          : events.map((e) => <NewsRow key={e.id} event={e} onClick={() => {
+              if (e.url) {
+                const lang = (e.metadata as Record<string, string>)?.language;
+                openArticle(e.url, e.title, lang);
+              } else { setSelectedEvent(e); }
+            }} />)
         }
       </div>
     </div>
@@ -31,7 +38,6 @@ export function GlobalNewsFeedPanel() {
 }
 
 function NewsRow({ event, onClick }: { event: GeoEvent; onClick: () => void }) {
-  const color = SEVERITY_COLOR[event.severity];
   const source = (event.metadata as Record<string, string>)?.source ?? event.source_id.replace(/_/g, " ");
 
   return (

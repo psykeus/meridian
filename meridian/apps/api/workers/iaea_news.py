@@ -20,7 +20,7 @@ class IAEANewsWorker(FeedWorker):
     display_name = "IAEA Nuclear News"
     category = FeedCategory.nuclear
     refresh_interval = 3600
-    _rss_url = "https://www.iaea.org/feeds/topstories.xml"
+    _rss_url = "https://www.iaea.org/feeds/topnews"
 
     async def fetch(self) -> list[GeoEvent]:
         try:

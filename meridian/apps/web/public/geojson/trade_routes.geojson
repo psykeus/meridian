@@ -1,0 +1,55 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Trans-Pacific (Shanghai–Los Angeles)", "type": "container", "annual_tonnage_mt": 280 },
+      "geometry": { "type": "LineString", "coordinates": [[121.84, 30.63], [125.0, 33.0], [135.0, 38.0], [155.0, 42.0], [170.0, 44.0], [-175.0, 44.0], [-160.0, 42.0], [-145.0, 38.0], [-130.0, 35.0], [-118.27, 33.74]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Asia–Europe (Singapore–Suez–Rotterdam)", "type": "container", "annual_tonnage_mt": 250 },
+      "geometry": { "type": "LineString", "coordinates": [[103.82, 1.26], [98.0, 5.0], [85.0, 10.0], [73.0, 15.0], [60.0, 20.0], [50.0, 14.0], [43.5, 12.5], [43.0, 12.8], [38.0, 17.0], [34.0, 27.0], [32.58, 29.97], [32.34, 31.26], [28.0, 35.0], [15.0, 36.5], [5.0, 36.5], [-5.5, 36.1], [-9.5, 38.5], [-5.0, 44.0], [0.0, 48.0], [4.29, 51.9]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Trans-Atlantic (New York–Rotterdam)", "type": "container", "annual_tonnage_mt": 120 },
+      "geometry": { "type": "LineString", "coordinates": [[-74.15, 40.67], [-65.0, 42.0], [-50.0, 47.0], [-35.0, 50.0], [-20.0, 51.5], [-10.0, 52.0], [0.0, 52.0], [4.29, 51.9]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Cape of Good Hope (Singapore–Cape Town–Rotterdam)", "type": "mixed", "annual_tonnage_mt": 160 },
+      "geometry": { "type": "LineString", "coordinates": [[103.82, 1.26], [90.0, -5.0], [75.0, -15.0], [55.0, -25.0], [35.0, -32.0], [18.44, -33.92], [10.0, -30.0], [0.0, -20.0], [-5.0, 0.0], [-10.0, 20.0], [-10.0, 35.0], [-5.0, 44.0], [0.0, 48.0], [4.29, 51.9]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Strait of Malacca Transit", "type": "mixed", "annual_tonnage_mt": 400 },
+      "geometry": { "type": "LineString", "coordinates": [[104.2, 1.2], [103.5, 1.5], [102.0, 2.5], [100.5, 3.5], [99.5, 4.5], [98.5, 5.5], [96.5, 6.5], [95.0, 7.0]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Suez Canal Approach", "type": "mixed", "annual_tonnage_mt": 350 },
+      "geometry": { "type": "LineString", "coordinates": [[34.0, 27.0], [33.5, 28.0], [33.0, 29.0], [32.58, 29.97], [32.45, 30.5], [32.35, 31.0], [32.34, 31.26], [31.0, 31.4], [30.0, 31.3]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Panama Canal Approach", "type": "container", "annual_tonnage_mt": 200 },
+      "geometry": { "type": "LineString", "coordinates": [[-80.0, 9.5], [-79.8, 9.3], [-79.6, 9.1], [-79.56, 8.96], [-79.5, 8.9], [-79.4, 8.85], [-79.3, 8.9], [-79.2, 9.0], [-79.0, 9.2]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Persian Gulf–India", "type": "oil", "annual_tonnage_mt": 300 },
+      "geometry": { "type": "LineString", "coordinates": [[50.0, 26.5], [52.0, 26.0], [55.0, 25.5], [56.5, 25.0], [58.0, 24.0], [60.0, 22.0], [63.0, 20.0], [66.0, 20.0], [69.0, 19.5], [72.88, 18.98]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "East Africa–India", "type": "mixed", "annual_tonnage_mt": 80 },
+      "geometry": { "type": "LineString", "coordinates": [[39.65, -4.04], [42.0, -1.0], [45.0, 3.0], [50.0, 8.0], [55.0, 12.0], [60.0, 16.0], [65.0, 18.0], [72.88, 18.98]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Mediterranean Circuit", "type": "container", "annual_tonnage_mt": 150 },
+      "geometry": { "type": "LineString", "coordinates": [[-5.5, 36.1], [-2.0, 36.5], [2.0, 37.0], [8.0, 37.5], [12.5, 38.0], [15.5, 37.5], [18.0, 36.5], [23.0, 36.0], [26.0, 35.5], [29.0, 35.0], [32.0, 33.0], [34.0, 32.0], [34.5, 31.5]] }
+    }
+  ]
+}

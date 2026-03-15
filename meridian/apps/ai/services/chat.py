@@ -5,21 +5,12 @@ from typing import AsyncGenerator
 
 import litellm
 from tools.feed_tools import TOOL_DEFINITIONS, execute_tool
+from services.prompt_defaults import DEFAULT_PROMPTS
+from services.sanitize import sanitize_user_input, sanitize_tool_result
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are Meridian AI Analyst — an expert global intelligence analyst with access to live data feeds covering geopolitics, security, environment, aviation, maritime, cyber threats, and financial markets.
-
-You have access to real-time tools to query live event data. Always use them when asked about current events, threats, or situations.
-
-Guidelines:
-- Be concise and intelligence-analyst precise. Lead with key assessments.
-- Always cite source feeds when referencing data.
-- For geopolitical events, provide context (actors, significance, trajectory).
-- For threat events, assess severity and recommend watch items.
-- Timestamps are always UTC. Current data reflects the last 24-48 hours unless otherwise queried.
-- Never invent data. If tools return no results, say so clearly.
-"""
+SYSTEM_PROMPT = DEFAULT_PROMPTS["chat"]["system_prompt"]
 
 EXAMPLE_QUERIES = [
     "What are the most critical events in the last 6 hours?",
@@ -39,22 +30,35 @@ async def chat_stream(
     messages: list[dict],
     model: str,
     max_tool_rounds: int = 5,
+    system_prompt: str | None = None,
+    temperature: float | None = None,
+    api_key: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream an AI Analyst response with automatic tool-use loop."""
-    all_messages = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
+    prompt = system_prompt if system_prompt is not None else SYSTEM_PROMPT
+    temp = temperature if temperature is not None else 0.2
+    # Sanitize user message content
+    sanitized_messages = []
+    for m in messages:
+        content = sanitize_user_input(m.get("content", "")) if m.get("role") == "user" else m.get("content", "")
+        sanitized_messages.append({"role": m["role"], "content": content})
+    all_messages = [{"role": "system", "content": prompt}] + sanitized_messages
     rounds = 0
 
     while rounds < max_tool_rounds:
         rounds += 1
         try:
-            response = await litellm.acompletion(
+            kwargs = dict(
                 model=model,
                 messages=all_messages,
                 tools=TOOL_DEFINITIONS,
                 tool_choice="auto",
                 stream=False,
-                temperature=0.2,
+                temperature=temp,
             )
+            if api_key:
+                kwargs["api_key"] = api_key
+            response = await litellm.acompletion(**kwargs)
         except Exception as e:
             yield f"[AI Error: {e}]"
             return
@@ -79,7 +83,7 @@ async def chat_stream(
                     fn_args = {}
 
                 yield f"[tool:{fn_name}]"
-                result = await execute_tool(fn_name, fn_args)
+                result = sanitize_tool_result(await execute_tool(fn_name, fn_args))
 
                 all_messages.append({
                     "role": "tool",

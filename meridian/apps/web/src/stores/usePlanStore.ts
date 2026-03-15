@@ -64,6 +64,7 @@ interface PlanStore {
   timeline: TimelineEntry[];
   tasks: Task[];
   drawingMode: DrawingMode | null;
+  spotlightAnnotationId: number | null;
 
   setRooms: (rooms: PlanRoom[]) => void;
   setActiveRoom: (id: number | null) => void;
@@ -71,6 +72,7 @@ interface PlanStore {
   setTimeline: (t: TimelineEntry[]) => void;
   setTasks: (t: Task[]) => void;
   setDrawingMode: (mode: DrawingMode | null) => void;
+  setSpotlightAnnotation: (id: number | null) => void;
   addAnnotation: (a: Annotation) => void;
   addTimelineEntry: (e: TimelineEntry) => void;
   addTask: (t: Task) => void;
@@ -93,6 +95,7 @@ export const usePlanStore = create<PlanStore>((set, get) => ({
   timeline: [],
   tasks: [],
   drawingMode: null,
+  spotlightAnnotationId: null,
 
   setRooms: (rooms) => set({ rooms }),
   setActiveRoom: (id) => set({ activeRoomId: id }),
@@ -100,6 +103,7 @@ export const usePlanStore = create<PlanStore>((set, get) => ({
   setTimeline: (timeline) => set({ timeline }),
   setTasks: (tasks) => set({ tasks }),
   setDrawingMode: (drawingMode) => set({ drawingMode }),
+  setSpotlightAnnotation: (id) => set({ spotlightAnnotationId: id }),
 
   addAnnotation: (a) => set((s) => ({ annotations: [...s.annotations, a] })),
   addTimelineEntry: (e) => set((s) => ({ timeline: [e, ...s.timeline] })),

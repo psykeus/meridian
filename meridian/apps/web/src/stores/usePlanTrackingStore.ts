@@ -71,6 +71,10 @@ export const usePlanTrackingStore = create<PlanTrackingStore>()(
 
       clearAll: () => set({ trackedEntities: {} }),
     }),
-    { name: "meridian-plan-tracking" }
+    {
+      name: "meridian-plan-tracking",
+      version: 1,
+      migrate: (persisted: unknown) => persisted as any,
+    }
   )
 );

@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   db:
-    image: postgres:16-alpine
+    image: timescale/timescaledb:latest-pg16
     container_name: meridian_db
     restart: unless-stopped
     environment:
@@ -54,7 +52,7 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload --reload-delay 3"
 
   collab:
     build:
@@ -80,14 +78,14 @@ services:
     env_file: .env
     environment:
       CORS_ORIGINS: http://localhost:5173
-      LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+      LLM_MODEL: ${LLM_MODEL:-gemini/gemini-2.5-flash}
     ports:
       - "8001:8001"
     depends_on:
       - api
     volumes:
       - ./apps/ai:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --reload --reload-delay 3
 
   web:
     build:
@@ -97,7 +95,7 @@ services:
     restart: unless-stopped
     environment:
       VITE_API_URL: http://api:8000
-      VITE_WS_URL: http://api:8000
+      VITE_WS_URL: ws://api:8000
       VITE_AI_URL: http://ai:8001
       VITE_COLLAB_URL: ws://collab:1234
     ports:

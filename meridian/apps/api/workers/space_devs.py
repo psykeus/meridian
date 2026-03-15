@@ -59,7 +59,7 @@ class SpaceDevsWorker(FeedWorker):
                 title=f"🚀 {name}",
                 body=f"{lsp} · {rocket} · Pad: {pad_name}" + (f" — {mission_desc[:150]}" if mission_desc else ""),
                 lat=lat, lng=lng,
-                event_time=event_time.isoformat(),
+                event_time=event_time,
                 url=url or "https://thespacedevs.com/",
                 metadata={"launch_id": launch_id, "status": status, "provider": lsp, "rocket": rocket, "pad": pad_name},
             ))

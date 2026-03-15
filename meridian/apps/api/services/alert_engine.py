@@ -1,8 +1,11 @@
 """Alert rule engine — evaluates rules against incoming events and dispatches delivery."""
 import asyncio
+import ipaddress
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import orjson
@@ -16,6 +19,71 @@ from models.alert import AlertRule, AlertNotification
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+# ── Throttle & dedup cache ─────────────────────────────────────────────────
+# Maps rule_id → last_fired_epoch. Prevents the same rule from firing more
+# than once within MIN_FIRE_INTERVAL_SECONDS.
+_rule_last_fired: dict[int, float] = {}
+MIN_FIRE_INTERVAL_SECONDS = 300  # 5-minute cooldown per rule
+
+# Maps (rule_id, source_event_id) → True. Prevents the same event from
+# triggering the same rule twice.
+_dedup_cache: dict[tuple[int, str], float] = {}
+_DEDUP_TTL = 3600  # 1 hour
+
+# ── Rule cache ─────────────────────────────────────────────────────────────
+# Caches active rules for 30s to avoid per-event DB queries under burst.
+_rules_cache: list[AlertRule] = []
+_rules_cache_time: float = 0
+_RULES_CACHE_TTL = 30  # seconds
+
+# ── Webhook URL validation (SSRF prevention) ──────────────────────────────
+
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+
+def _is_safe_webhook_url(url: str) -> bool:
+    """Validate that a webhook URL is safe to POST to (no SSRF)."""
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    # Require https
+    if parsed.scheme not in ("https",):
+        return False
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+
+    # Block common internal hostnames
+    if hostname in ("localhost", "metadata.google.internal"):
+        return False
+
+    # Resolve hostname and check against blocked networks
+    import socket
+    try:
+        addrs = socket.getaddrinfo(hostname, None)
+        for family, _, _, _, sockaddr in addrs:
+            ip = ipaddress.ip_address(sockaddr[0])
+            for net in _BLOCKED_NETWORKS:
+                if ip in net:
+                    return False
+    except socket.gaierror:
+        return False
+
+    return True
+
 
 # ---------------------------------------------------------------------------
 # Rule condition evaluators
@@ -111,6 +179,10 @@ async def _send_email(to: str, subject: str, body: str) -> None:
 # ---------------------------------------------------------------------------
 
 async def _dispatch_webhook(url: str, payload: dict) -> None:
+    if not _is_safe_webhook_url(url):
+        logger.warning(f"webhook_blocked_ssrf url={url}")
+        return
+
     async with httpx.AsyncClient(timeout=15) as client:
         for attempt in range(3):
             try:
@@ -119,13 +191,21 @@ async def _dispatch_webhook(url: str, payload: dict) -> None:
                     content=orjson.dumps(payload),
                     headers={"Content-Type": "application/json", "X-Meridian-Event": "alert"},
                 )
-                if resp.status_code < 500:
+                if resp.status_code < 400:
                     logger.info(f"webhook_dispatched url={url} status={resp.status_code}")
                     return
+                if resp.status_code < 500:
+                    # Client error (4xx) — don't retry, it won't help
+                    logger.warning(f"webhook_client_error url={url} status={resp.status_code}")
+                    return
                 logger.warning(f"webhook_retry attempt={attempt+1} status={resp.status_code}")
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadTimeout) as e:
+                logger.warning(f"webhook_transient_error attempt={attempt+1} url={url} error={e}")
             except Exception as e:
                 logger.warning(f"webhook_error attempt={attempt+1} url={url} error={e}")
+                return  # Unknown error — don't retry
             await asyncio.sleep(2 ** attempt)
+    logger.error(f"webhook_exhausted url={url} — all retries failed")
 
 
 # ---------------------------------------------------------------------------
@@ -134,14 +214,45 @@ async def _dispatch_webhook(url: str, payload: dict) -> None:
 
 async def _process_event(event: dict, db: AsyncSession) -> None:
     """Evaluate all active rules against a single event and dispatch deliveries."""
-    result = await db.execute(
-        select(AlertRule).where(AlertRule.is_active == True)  # noqa: E712
-    )
-    rules: list[AlertRule] = list(result.scalars().all())
+    global _rules_cache, _rules_cache_time
+
+    now_mono = time.monotonic()
+    if now_mono - _rules_cache_time > _RULES_CACHE_TTL or not _rules_cache:
+        result = await db.execute(
+            select(AlertRule).where(AlertRule.is_active == True)  # noqa: E712
+        )
+        _rules_cache = list(result.scalars().all())
+        _rules_cache_time = now_mono
+
+    rules = _rules_cache
+
+    now = time.monotonic()
+
+    # Periodic cleanup of stale dedup entries (every evaluation cycle is fine)
+    stale_keys = [k for k, t in _dedup_cache.items() if now - t > _DEDUP_TTL]
+    for k in stale_keys:
+        del _dedup_cache[k]
+
+    has_changes = False
 
     for rule in rules:
         if not _evaluate_rule(rule, event):
             continue
+
+        # Throttle: skip if this rule fired recently
+        last_fired = _rule_last_fired.get(rule.id, 0)
+        if now - last_fired < MIN_FIRE_INTERVAL_SECONDS:
+            continue
+
+        # Dedup: skip if this exact (rule, event) pair already fired
+        event_id = str(event.get("id", ""))
+        dedup_key = (rule.id, event_id)
+        if event_id and dedup_key in _dedup_cache:
+            continue
+
+        _rule_last_fired[rule.id] = now
+        if event_id:
+            _dedup_cache[dedup_key] = now
 
         channels: list[str] = rule.delivery_channels or ["in_app"]
         title = f"Alert: {rule.name}"
@@ -163,6 +274,7 @@ async def _process_event(event: dict, db: AsyncSession) -> None:
                 source_event_id=str(event.get("id", "")),
             )
             db.add(notif)
+            has_changes = True
 
         # Email
         if "email" in channels and rule.email_to:
@@ -178,26 +290,34 @@ async def _process_event(event: dict, db: AsyncSession) -> None:
             }
             asyncio.create_task(_dispatch_webhook(rule.webhook_url, webhook_payload))
 
-        # Update trigger stats
+        # Update trigger stats (atomic DB-level increment)
         await db.execute(
             update(AlertRule)
             .where(AlertRule.id == rule.id)
             .values(
-                trigger_count=rule.trigger_count + 1,
+                trigger_count=AlertRule.trigger_count + 1,
                 last_triggered=datetime.now(timezone.utc),
             )
         )
+        has_changes = True
 
-    await db.commit()
+    if has_changes:
+        await db.commit()
 
 
 # ---------------------------------------------------------------------------
 # Main background loop — subscribes to Redis and processes events
 # ---------------------------------------------------------------------------
 
+# Module-level engine ref for proper cleanup
+_alert_engine_instance = None
+
+
 async def run_alert_engine() -> None:
     """Background task: subscribes to Redis meridian:events and evaluates rules."""
+    global _alert_engine_instance
     engine = create_async_engine(settings.database_url, pool_size=3, max_overflow=2)
+    _alert_engine_instance = engine
     Session = async_sessionmaker(engine, expire_on_commit=False)
 
     logger.info("alert_engine_started")
@@ -221,3 +341,11 @@ async def run_alert_engine() -> None:
         except Exception as e:
             logger.error(f"alert_engine_redis_error: {e}")
             await asyncio.sleep(5)
+
+
+async def dispose_alert_engine() -> None:
+    """Dispose the alert engine's DB connection pool. Call on shutdown."""
+    global _alert_engine_instance
+    if _alert_engine_instance:
+        await _alert_engine_instance.dispose()
+        _alert_engine_instance = None

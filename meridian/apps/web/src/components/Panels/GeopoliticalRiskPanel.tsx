@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BarChart, Bar, XAxis, Tooltip, Cell, ResponsiveContainer } from "recharts";
+import { apiFetch } from "@/lib/api";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 
@@ -23,7 +24,7 @@ export function GeopoliticalRiskPanel() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/ai/risk-scores")
+    apiFetch("/ai/risk-scores")
       .then((r) => r.json())
       .then((data) => setEntries(data))
       .catch(() => {})

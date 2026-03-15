@@ -10,7 +10,14 @@ from workers._country_coords import COUNTRY_COORDS
 
 logger = logging.getLogger(__name__)
 
-_IODA_SIGNALS_URL = "https://api.ioda.inetintel.cc.gatech.edu/v2/signals/raw/country"
+_IODA_ALERTS_URL = "https://api.ioda.inetintel.cc.gatech.edu/v2/outages/alerts"
+
+# IODA alert levels map to severity
+_LEVEL_SEVERITY = {
+    "critical": SeverityLevel.critical,
+    "warning": SeverityLevel.high,
+    "normal": SeverityLevel.low,
+}
 
 
 def _score_to_severity(score: float) -> SeverityLevel:
@@ -36,32 +43,41 @@ class IODAOutagesWorker(FeedWorker):
         now = datetime.now(timezone.utc)
         six_hours_ago = now - timedelta(hours=6)
 
-        params = {
-            "from": int(six_hours_ago.timestamp()),
-            "until": int(now.timestamp()),
-        }
+        from_ts = int(six_hours_ago.timestamp())
+        until_ts = int(now.timestamp())
+        url = f"{_IODA_ALERTS_URL}?from={from_ts}&until={until_ts}"
 
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(_IODA_SIGNALS_URL, params=params)
+            resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
 
         events: list[GeoEvent] = []
 
-        # The IODA v2 API returns signal data keyed by country
-        # Response shape: { "data": [ { "entityCode": "US", ... "signals": [...] }, ... ] }
-        entries = data.get("data", [])
-        if isinstance(entries, dict):
-            entries = entries.get("countries", entries.get("results", []))
+        # The outages/alerts endpoint returns:
+        # { "data": [ { "entity": { "code": "US", "type": "country", ... },
+        #               "level": "warning", "condition": "...",
+        #               "time": 1234567890, "datasource": "bgp", ... }, ... ] }
+        alerts = data.get("data", [])
+        if isinstance(alerts, dict):
+            alerts = alerts.get("alerts", alerts.get("results", []))
 
-        for entry in entries:
+        for alert in alerts:
             try:
+                # Extract entity info
+                entity = alert.get("entity", {})
                 entity_code = (
-                    entry.get("entityCode", "")
-                    or entry.get("entity", {}).get("code", "")
-                    or entry.get("country", "")
+                    entity.get("code", "")
+                    or alert.get("entityCode", "")
+                    or alert.get("country", "")
                 )
+                entity_type = entity.get("type", "").lower()
+
                 if not entity_code:
+                    continue
+
+                # Only process country-level alerts for coordinate mapping
+                if entity_type and entity_type != "country":
                     continue
 
                 cc = entity_code.strip().lower()
@@ -69,38 +85,24 @@ class IODAOutagesWorker(FeedWorker):
                 if not coords:
                     continue
 
-                # Extract outage signals — look for significant drops
-                # IODA provides multiple datasource signals (BGP, active probing, darknet)
-                signals = entry.get("signals", entry.get("dataseries", []))
-                if not signals:
-                    # Some response formats nest values differently
-                    overall_score = entry.get("score", entry.get("severity", 0))
-                    if not overall_score:
-                        continue
-                    severity_score = float(overall_score)
+                # Determine severity from alert level or score
+                level = alert.get("level", "").lower()
+                if level in _LEVEL_SEVERITY:
+                    severity = _LEVEL_SEVERITY[level]
                 else:
-                    # Compute average drop across signal sources
-                    drops = []
-                    for signal in signals:
-                        value = signal.get("value", signal.get("score", None))
-                        if value is not None:
-                            try:
-                                drops.append(float(value))
-                            except (TypeError, ValueError):
-                                pass
-                    if not drops:
-                        continue
-                    severity_score = sum(drops) / len(drops)
+                    score = alert.get("score", alert.get("severity", 0))
+                    try:
+                        severity = _score_to_severity(float(score))
+                    except (TypeError, ValueError):
+                        severity = SeverityLevel.medium
 
-                # Only report meaningful outages
-                if severity_score < 10:
+                # Skip low-severity / normal alerts
+                if severity in (SeverityLevel.low, SeverityLevel.info):
                     continue
 
-                severity = _score_to_severity(severity_score)
-
-                # Try to parse a timestamp from the entry
+                # Parse timestamp
                 event_time = now
-                ts = entry.get("time", entry.get("timestamp", entry.get("from", None)))
+                ts = alert.get("time", alert.get("timestamp", alert.get("from", None)))
                 if ts is not None:
                     try:
                         if isinstance(ts, (int, float)):
@@ -110,35 +112,37 @@ class IODAOutagesWorker(FeedWorker):
                     except Exception:
                         event_time = now
 
+                datasource = alert.get("datasource", "unknown")
+                condition = alert.get("condition", "")
                 country_upper = cc.upper()
                 lat, lng = coords
 
                 events.append(GeoEvent(
-                    id=f"ioda_{cc}_{int(now.timestamp())}",
+                    id=f"ioda_{cc}_{datasource}_{int(event_time.timestamp())}",
                     source_id=self.source_id,
                     category=self.category,
                     severity=severity,
-                    title=f"Internet Outage: {country_upper} — {severity_score:.0f}% signal drop",
+                    title=f"Internet Outage Alert: {country_upper} ({datasource})",
                     body=(
-                        f"IODA detected a {severity_score:.0f}% drop in internet connectivity "
-                        f"signals for {country_upper}. This may indicate a significant "
-                        f"internet outage caused by infrastructure failure, cable cuts, "
-                        f"or government-imposed shutdowns."
-                    ),
+                        f"IODA detected an internet connectivity alert for {country_upper} "
+                        f"via {datasource}. Level: {level or 'unknown'}. "
+                        f"{condition}"
+                    ).strip()[:600],
                     lat=lat,
                     lng=lng,
                     event_time=event_time,
                     url=f"https://ioda.inetintel.cc.gatech.edu/country/{country_upper}",
                     metadata={
                         "country": country_upper,
-                        "severity_score": round(severity_score, 1),
-                        "signal_sources": len(signals) if isinstance(signals, list) else 0,
+                        "level": level,
+                        "datasource": datasource,
+                        "condition": condition[:200] if condition else None,
                     },
                 ))
             except Exception as exc:
                 logger.warning(
                     "ioda_entry_parse_error",
-                    extra={"error": str(exc), "entry_keys": list(entry.keys()) if isinstance(entry, dict) else None},
+                    extra={"error": str(exc), "entry_keys": list(alert.keys()) if isinstance(alert, dict) else None},
                 )
                 continue
 

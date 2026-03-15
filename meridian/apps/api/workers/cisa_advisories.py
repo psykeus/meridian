@@ -1,6 +1,7 @@
 """CISA ICS-CERT — Cybersecurity and Infrastructure Security Agency advisories RSS."""
 
 import hashlib
+import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -102,7 +103,6 @@ class CISAAdvisoriesWorker(FeedWorker):
                     .strip()
                 )
                 # Strip simple HTML tags
-                import re
                 clean_desc = re.sub(r"<[^>]+>", "", clean_desc).strip()[:500]
 
                 item_hash = hashlib.md5(
@@ -154,7 +154,6 @@ class CISAAdvisoriesWorker(FeedWorker):
     @staticmethod
     def _extract_advisory_id(title: str, guid: str) -> str | None:
         """Extract CISA advisory ID (e.g., ICSA-25-001-01) from title or GUID."""
-        import re
         # CISA ICS advisories follow pattern ICSA-YY-NNN-NN or ICSMA-YY-NNN-NN
         pattern = r"(ICS[AM]?A?-\d{2}-\d{3}-\d{2})"
         match = re.search(pattern, title)

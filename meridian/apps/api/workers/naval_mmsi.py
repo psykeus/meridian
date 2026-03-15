@@ -6,9 +6,21 @@ import httpx
 
 from core.credential_store import get_credential
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
+from workers._country_coords import COUNTRY_COORDS
 from workers.base import FeedWorker
 
 logger = logging.getLogger(__name__)
+
+# Home port approximate coordinates for naval vessels
+_HOME_PORTS: dict[str, tuple[float, float]] = {
+    "US": (36.95, -76.33),   # Norfolk, VA (US Navy home port)
+    "GB": (50.80, -1.10),    # Portsmouth, UK
+    "FR": (43.12, 5.93),     # Toulon, France
+    "RU": (69.08, 33.42),    # Severomorsk, Russia
+    "IN": (17.70, 83.30),    # Visakhapatnam, India
+    "IT": (40.84, 14.27),    # Naples, Italy
+    "JP": (35.29, 139.68),   # Yokosuka, Japan
+}
 
 # AISHub API endpoint (requires API key)
 _AISHUB_URL = "https://data.aishub.net/ws.php"
@@ -64,112 +76,161 @@ class NavalMMSIWorker(FeedWorker):
     refresh_interval = 1800  # 30 minutes
     run_on_startup = False  # requires credentials, rate-limited
 
+    def _get_home_port(self, flag: str) -> tuple[float, float]:
+        if flag in _HOME_PORTS:
+            return _HOME_PORTS[flag]
+        if flag in COUNTRY_COORDS:
+            return COUNTRY_COORDS[flag]
+        return (36.95, -76.33)  # default Norfolk
+
     async def fetch(self) -> list[GeoEvent]:
         api_key = get_credential("AISHUB_API_KEY")
-        if not api_key:
-            logger.debug("naval_mmsi_skip: missing AISHUB_API_KEY credential")
-            return []
 
         events: list[GeoEvent] = []
         now = datetime.now(timezone.utc)
+        seen_mmsis: set[str] = set()
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            # Query AISHub for each known naval MMSI
-            # AISHub allows MMSI-specific queries
-            for mmsi, vessel_info in _NAVAL_VESSELS.items():
-                try:
-                    resp = await client.get(
-                        _AISHUB_URL,
-                        params={
-                            "username": api_key,
-                            "format": "1",  # JSON
-                            "output": "json",
-                            "compress": "0",
-                            "mmsi": mmsi,
-                        },
-                    )
-                    if resp.status_code != 200:
-                        continue
-
-                    data = resp.json()
-                    # AISHub returns a list of position reports
-                    records = data if isinstance(data, list) else data.get("data", [])
-                    if not records:
-                        continue
-
-                    # Use the most recent position report
-                    pos = records[0] if records else None
-                    if pos is None:
-                        continue
-
-                    lat = pos.get("LATITUDE") or pos.get("lat")
-                    lng = pos.get("LONGITUDE") or pos.get("lng") or pos.get("lon")
-                    if lat is None or lng is None:
-                        continue
-
-                    lat = float(lat)
-                    lng = float(lng)
-
-                    # Validate coordinates
-                    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-                        continue
-                    if lat == 0.0 and lng == 0.0:
-                        continue
-
-                    speed = pos.get("SPEED") or pos.get("speed") or 0
-                    heading = pos.get("HEADING") or pos.get("heading")
-                    course = pos.get("COURSE") or pos.get("course")
-                    timestamp = pos.get("TIME") or pos.get("timestamp")
-
-                    if timestamp:
-                        try:
-                            event_time = datetime.fromisoformat(
-                                str(timestamp).replace("Z", "+00:00")
-                            )
-                        except (ValueError, TypeError):
-                            event_time = now
-                    else:
-                        event_time = now
-
-                    vessel_name = vessel_info["name"]
-                    vessel_type = vessel_info["type"]
-                    flag = vessel_info["flag"]
-                    severity = _TYPE_SEVERITY.get(vessel_type, SeverityLevel.low)
-
-                    speed_kt = float(speed) / 10.0 if speed else 0  # AIS speed is in 1/10 knot
-
-                    title = f"Naval: {vessel_name} [{flag}]"
-                    body = (
-                        f"{vessel_name} ({vessel_type}) — {flag} Navy. "
-                        f"Position: {lat:.3f}, {lng:.3f}. "
-                        f"Speed: {speed_kt:.1f} kt."
-                    )
-
-                    events.append(
-                        GeoEvent(
-                            id=f"naval_{mmsi}",
-                            source_id=self.source_id,
-                            category=self.category,
-                            subcategory="naval_vessel",
-                            title=title,
-                            body=body,
-                            severity=severity,
-                            lat=lat,
-                            lng=lng,
-                            event_time=event_time,
-                            url=f"https://www.marinetraffic.com/en/ais/details/ships/mmsi:{mmsi}",
-                            metadata={
+        if api_key:
+            async with httpx.AsyncClient(timeout=30) as client:
+                for mmsi, vessel_info in _NAVAL_VESSELS.items():
+                    try:
+                        resp = await client.get(
+                            _AISHUB_URL,
+                            params={
+                                "username": api_key,
+                                "format": "1",
+                                "output": "json",
+                                "compress": "0",
                                 "mmsi": mmsi,
-                                "vessel_name": vessel_name,
-                                "vessel_type": vessel_type,
-                                "flag": flag,
-                                "speed_kt": speed_kt,
-                                "heading": heading,
-                                "course": course,
                             },
                         )
-                    )
-                except Exception:
-                    continue
+                        if resp.status_code != 200:
+                            continue
+
+                        data = resp.json()
+                        records = data if isinstance(data, list) else data.get("data", [])
+                        if not records:
+                            continue
+
+                        pos = records[0] if records else None
+                        if pos is None:
+                            continue
+
+                        lat = pos.get("LATITUDE") or pos.get("lat")
+                        lng = pos.get("LONGITUDE") or pos.get("lng") or pos.get("lon")
+                        if lat is None or lng is None:
+                            continue
+
+                        lat = float(lat)
+                        lng = float(lng)
+
+                        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+                            continue
+                        if lat == 0.0 and lng == 0.0:
+                            continue
+
+                        seen_mmsis.add(mmsi)
+
+                        speed = pos.get("SPEED") or pos.get("speed") or 0
+                        heading = pos.get("HEADING") or pos.get("heading")
+                        course = pos.get("COURSE") or pos.get("course")
+                        timestamp = pos.get("TIME") or pos.get("timestamp")
+
+                        if timestamp:
+                            try:
+                                event_time = datetime.fromisoformat(
+                                    str(timestamp).replace("Z", "+00:00")
+                                )
+                            except (ValueError, TypeError):
+                                event_time = now
+                        else:
+                            event_time = now
+
+                        vessel_name = vessel_info["name"]
+                        vessel_type = vessel_info["type"]
+                        flag = vessel_info["flag"]
+                        severity = _TYPE_SEVERITY.get(vessel_type, SeverityLevel.low)
+
+                        speed_kt = float(speed) / 10.0 if speed else 0
+
+                        status = "UNDERWAY" if speed_kt > 0.5 else "AT ANCHOR / IN PORT"
+                        title = f"Naval: {vessel_name} — {status} [{flag}]"
+                        body = (
+                            f"{vessel_name} ({vessel_type}) — {flag} Navy. "
+                            f"Position: {lat:.3f}, {lng:.3f}. "
+                            f"Speed: {speed_kt:.1f} kt."
+                        )
+
+                        events.append(
+                            GeoEvent(
+                                id=f"naval_{mmsi}",
+                                source_id=self.source_id,
+                                category=self.category,
+                                subcategory="naval_vessel",
+                                title=title,
+                                body=body,
+                                severity=severity,
+                                lat=lat,
+                                lng=lng,
+                                event_time=event_time,
+                                url=f"https://www.marinetraffic.com/en/ais/details/ships/mmsi:{mmsi}",
+                                metadata={
+                                    "mmsi": mmsi,
+                                    "vessel_name": vessel_name,
+                                    "vessel_type": vessel_type,
+                                    "flag": flag,
+                                    "speed_kt": speed_kt,
+                                    "heading": heading,
+                                    "course": course,
+                                    "status": "underway" if speed_kt > 0.5 else "anchored",
+                                },
+                            )
+                        )
+                    except Exception:
+                        continue
+        else:
+            logger.debug("naval_mmsi: no AISHUB_API_KEY — generating home-port events only")
+
+        # Generate "AIS DARK" events for vessels not seen
+        for mmsi, vessel_info in _NAVAL_VESSELS.items():
+            if mmsi in seen_mmsis:
+                continue
+
+            vessel_name = vessel_info["name"]
+            vessel_type = vessel_info["type"]
+            flag = vessel_info["flag"]
+            lat, lng = self._get_home_port(flag)
+
+            title = f"Naval: {vessel_name} — AIS DARK [{flag}]"
+            body = (
+                f"{vessel_name} ({vessel_type}) — {flag} Navy. "
+                f"No AIS signal detected. Vessel may be in port, operating under EMCON "
+                f"(emissions control), or AIS transponder disabled. "
+                f"Shown at approximate home port."
+            )
+
+            events.append(
+                GeoEvent(
+                    id=f"naval_{mmsi}_dark",
+                    source_id=self.source_id,
+                    category=self.category,
+                    subcategory="naval_vessel",
+                    title=title,
+                    body=body,
+                    severity=SeverityLevel.info,
+                    lat=lat,
+                    lng=lng,
+                    event_time=now,
+                    url=f"https://www.marinetraffic.com/en/ais/details/ships/mmsi:{mmsi}",
+                    metadata={
+                        "mmsi": mmsi,
+                        "vessel_name": vessel_name,
+                        "vessel_type": vessel_type,
+                        "flag": flag,
+                        "status": "ais_dark",
+                        "on_ground": True,
+                    },
+                )
+            )
 
         return events

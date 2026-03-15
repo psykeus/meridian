@@ -139,14 +139,22 @@ export function useCollabSocket({
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.hostname;
     const port = 1234;
-    const url = `${protocol}//${host}:${port}/room-${roomId}?userId=${userId}&name=${encodeURIComponent(userName)}&color=${encodeURIComponent(userColor)}`;
+    const token = localStorage.getItem("access_token") ?? "";
+    const url = `${protocol}//${host}:${port}/room-${roomId}?userId=${userId}&name=${encodeURIComponent(userName)}&color=${encodeURIComponent(userColor)}&token=${encodeURIComponent(token)}`;
 
     const ws = new WebSocket(url);
 
     ws.onopen = () => {
       useCollabStore.getState().setConnected(true);
+      // Throttle cursor broadcasts to max 10/sec to prevent N² message storms
+      let lastCursorSend = 0;
+      const CURSOR_THROTTLE_MS = 100;
+
       useCollabStore.getState()._setSendFns({
         sendCursor: (lng, lat) => {
+          const now = performance.now();
+          if (now - lastCursorSend < CURSOR_THROTTLE_MS) return;
+          lastCursorSend = now;
           if (ws.readyState === WebSocket.OPEN)
             ws.send(JSON.stringify({ type: "cursor_move", lng, lat }));
         },
@@ -159,7 +167,7 @@ export function useCollabSocket({
             ws.send(JSON.stringify({ type: "layer_sync", layers }));
         },
         sendFocusFollow: (targetUserId) => {
-          if (ws.readyState === WebSocket.OPEN && targetUserId)
+          if (ws.readyState === WebSocket.OPEN)
             ws.send(JSON.stringify({ type: "focus_follow", targetUserId }));
           useCollabStore.getState().setFollowing(targetUserId);
         },
@@ -171,6 +179,9 @@ export function useCollabSocket({
       s.setConnected(false);
       s.setRemoteUsers([]);
       s._setSendFns(null);
+      // Note: reconnection is handled by the useEffect dependency array —
+      // if roomId/userId change the hook re-runs. For unexpected disconnects,
+      // the parent component can trigger a reconnect by bumping a key.
     };
 
     ws.onmessage = (event) => {

@@ -6,7 +6,7 @@ API_BASE = "http://api:8000/api/v1"
 
 
 async def _get(path: str, params: dict | None = None) -> Any:
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         resp = await client.get(f"{API_BASE}{path}", params=params or {})
         resp.raise_for_status()
         return resp.json()
@@ -42,6 +42,7 @@ TOOL_DEFINITIONS = [
                         "default": 20,
                     },
                 },
+                "required": [],
             },
         },
     },
@@ -67,7 +68,7 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": "get_feed_health",
             "description": "Check the health status of all data feed workers (last fetch time, success/failure).",
-            "parameters": {"type": "object", "properties": {}},
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -80,6 +81,7 @@ TOOL_DEFINITIONS = [
                 "properties": {
                     "hours_back": {"type": "integer", "description": "Hours to look back", "default": 24},
                 },
+                "required": [],
             },
         },
     },
@@ -94,23 +96,25 @@ async def execute_tool(name: str, args: dict) -> str:
             events = data.get("items", data) if isinstance(data, dict) else data
             if not events:
                 return "No events found matching the criteria."
-            lines = [f"- [{e['severity'].upper()}] {e['title']} ({e['source_id']})" for e in events[:20]]
+            lines = [f"- [{e.get('severity', 'unknown').upper()}] {e.get('title', 'Untitled')} ({e.get('source_id', '?')})" for e in events[:20]]
             return f"Found {len(events)} events:\n" + "\n".join(lines)
 
         if name == "get_events_near":
             data = await _get("/events/near", args)
             events = data if isinstance(data, list) else data.get("items", [])
             if not events:
-                return f"No events within {args.get('radius_km', 500)}km of ({args['lat']}, {args['lng']})."
-            lines = [f"- [{e['severity'].upper()}] {e['title']}" for e in events[:20]]
+                return f"No events within {args.get('radius_km', 500)}km of ({args.get('lat', '?')}, {args.get('lng', '?')})."
+            lines = [f"- [{e.get('severity', 'unknown').upper()}] {e.get('title', 'Untitled')}" for e in events[:20]]
             return f"Found {len(events)} events nearby:\n" + "\n".join(lines)
 
         if name == "get_feed_health":
             data = await _get("/feeds/health")
-            healthy = sum(1 for f in data.values() if f.get("status") == "healthy")
+            if not isinstance(data, dict):
+                return "Feed health data unavailable."
+            healthy = sum(1 for f in data.values() if isinstance(f, dict) and f.get("status") == "healthy")
             total = len(data)
             return f"{healthy}/{total} feeds healthy. " + "; ".join(
-                f"{k}: {v.get('status')}" for k, v in list(data.items())[:10]
+                f"{k}: {v.get('status') if isinstance(v, dict) else '?'}" for k, v in list(data.items())[:10]
             )
 
         if name == "count_events_by_category":

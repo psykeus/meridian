@@ -48,6 +48,8 @@ class GeoEventORM(Base):
     severity = Column(String, nullable=False, default="info")
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
+    # Named metadata_ to avoid collision with SQLAlchemy's Base.metadata.
+    # Always use metadata_ (not .metadata) when accessing via ORM.
     metadata_ = Column("metadata", JSONB, nullable=False, default=dict)
     url = Column(Text)
     event_time = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -88,7 +90,7 @@ class GeoEvent(BaseModel):
 class GeoEventResponse(GeoEvent):
     ingested_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "use_enum_values": True}
 
 
 class GeoEventFilter(BaseModel):

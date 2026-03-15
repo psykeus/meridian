@@ -193,16 +193,16 @@ async def auto_populate_timeline(
     )
     rows = result.fetchall()
 
-    # Deduplicate against existing auto entries
+    # Deduplicate against existing auto entries by source_label + entry_time
     existing = await db.execute(
-        select(TimelineEntry.title)
+        select(TimelineEntry.source_label, TimelineEntry.entry_time)
         .where(TimelineEntry.plan_room_id == room_id, TimelineEntry.is_auto == True)
     )
-    existing_titles = {r[0] for r in existing.fetchall()}
+    existing_keys = {(r[0], r[1]) for r in existing.fetchall()}
 
     entries = []
     for row in rows:
-        if row.title in existing_titles:
+        if (row.source_id, row.event_time) in existing_keys:
             continue
         entry = TimelineEntry(
             plan_room_id=room_id,

@@ -91,7 +91,7 @@ class EmergencySquawksWorker(FeedWorker):
                 )
 
                 events.append(GeoEvent(
-                    id=f"esq_{icao24}_{squawk_str}",
+                    id=f"esq_{icao24}_{squawk_str}_{int(now.timestamp())}",
                     source_id=self.source_id,
                     category=self.category,
                     severity=severity,

@@ -1,10 +1,14 @@
 """OpenSanctions.org — active international sanctions across all jurisdictions."""
+import logging
 from datetime import datetime, timezone
 
 import httpx
 
+from core.credential_store import get_credential
 from .base import FeedWorker
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
+
+logger = logging.getLogger(__name__)
 
 _LAT, _LNG = 52.52, 13.405  # Berlin — OpenSanctions HQ
 
@@ -18,12 +22,13 @@ class OpenSanctionsWorker(FeedWorker):
     _URL = "https://api.opensanctions.org/search/default"
 
     async def fetch(self) -> list[GeoEvent]:
+        api_key = get_credential("OPENSANCTIONS_API_KEY")
+        if not api_key:
+            logger.warning("OPENSANCTIONS_API_KEY not configured — skipping OpenSanctions feed")
+            return []
+
         params = {"q": "sanctioned", "limit": 50, "schema": "LegalEntity", "topics": "sanction"}
-        headers = {}
-        import os
-        api_key = os.getenv("OPENSANCTIONS_API_KEY", "")
-        if api_key:
-            headers["Authorization"] = f"ApiKey {api_key}"
+        headers = {"Authorization": f"ApiKey {api_key}"}
 
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(self._URL, params=params, headers=headers)

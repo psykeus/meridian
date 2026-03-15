@@ -15,8 +15,11 @@ from httpx import AsyncClient, ASGITransport
 # Make sure app package is importable from the api root
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from unittest.mock import patch
+
 from core.database import get_db
 from routers import events, feeds
+from routers.auth import get_current_user
 
 
 # ── Reusable sample rows ─────────────────────────────────────────────────────
@@ -68,18 +71,37 @@ def make_db_mock(rows: list[dict] | None = None) -> AsyncMock:
 
 # ── Test application (no lifespan, no scheduler, no Redis) ──────────────────
 
+def _make_fake_user():
+    """Return a mock User object for auth override."""
+    user = MagicMock()
+    user.id = 1
+    user.email = "test@meridian.app"
+    user.tier = "pro"
+    user.is_active = True
+    return user
+
+
 def build_test_app(db_rows: list[dict] | None = None) -> FastAPI:
     """Construct a minimal FastAPI app with mocked DB for testing."""
     app = FastAPI()
     app.include_router(events.router, prefix="/api/v1")
     app.include_router(feeds.router, prefix="/api/v1")
 
+    @app.get("/health")
+    async def health():
+        return {"status": "ok", "version": "0.1.0"}
+
     mock_session = make_db_mock(db_rows)
+    fake_user = _make_fake_user()
 
     async def override_get_db():
         yield mock_session
 
+    async def override_get_current_user():
+        return fake_user
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
     return app
 
 

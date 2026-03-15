@@ -81,9 +81,6 @@ class OrgResponse(BaseModel):
     id: int
     name: str
     slug: str
-    tier: str
-    max_members: int
-    subscription_status: str
     created_at: datetime
 
     model_config = {"from_attributes": True}

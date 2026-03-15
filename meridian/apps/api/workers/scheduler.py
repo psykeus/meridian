@@ -71,7 +71,7 @@ from workers.nrc_events import NRCEventsWorker
 from workers.safecast_radiation import SafecastRadiationWorker
 from workers.tsunami_warnings import TsunamiWarningsWorker
 from workers.cisa_advisories import CISAAdvisoriesWorker
-# Phase 6 workers — military/maritime/aviation/finance/space/OSINT
+# Phase 6 workers
 from workers.gtd_terrorism import GTDTerrorismWorker
 from workers.piracy_imb import PiracyIMBWorker
 from workers.baltic_dry import BalticDryWorker
@@ -81,6 +81,17 @@ from workers.airstrikes_derived import AirstrikesDerivedWorker
 from workers.naval_mmsi import NavalMMSIWorker
 from workers.vip_aircraft import VIPAircraftWorker
 from workers.bomber_isr import BomberISRWorker
+# Phase 7 workers — new data sources
+from workers.nasa_donki import NASADONKIWorker
+from workers.firms_active_fires import FIRMSActiveFiresWorker
+from workers.osv_vulnerabilities import OSVVulnerabilitiesWorker
+from workers.otx_pulse import OTXPulseWorker
+from workers.power_outages import PowerOutagesWorker
+from workers.starlink_tracker import StarlinkTrackerWorker
+from workers.gps_constellation import GPSConstellationWorker
+from workers.copernicus_ems import CopernicusEMSWorker
+from workers.flightaware import FlightAwareWorker
+from workers.aisstream import AISStreamWorker
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +167,7 @@ WORKERS: list[FeedWorker] = [
     # Phase 5 workers — tsunami & cyber advisories
     TsunamiWarningsWorker(),
     CISAAdvisoriesWorker(),
-    # Phase 6 workers — military/maritime/aviation/finance/space/OSINT
+    # Phase 6 workers
     GTDTerrorismWorker(),
     PiracyIMBWorker(),
     BalticDryWorker(),
@@ -166,31 +177,57 @@ WORKERS: list[FeedWorker] = [
     NavalMMSIWorker(),
     VIPAircraftWorker(),
     BomberISRWorker(),
+    # Phase 7 workers — new data sources
+    NASADONKIWorker(),
+    FIRMSActiveFiresWorker(),
+    OSVVulnerabilitiesWorker(),
+    OTXPulseWorker(),
+    PowerOutagesWorker(),
+    StarlinkTrackerWorker(),
+    GPSConstellationWorker(),
+    CopernicusEMSWorker(),
+    # Phase 8 workers — enriched flight data
+    FlightAwareWorker(),
+    # Phase 9 workers — AISStream.io live vessel tracking
+    AISStreamWorker(),
 ]
 
 
-_UPSERT_SQL = sa_text("""
+_DELETE_EXISTING_SQL = sa_text(
+    "DELETE FROM geo_events WHERE id = ANY(:ids)"
+)
+
+_INSERT_SQL = sa_text("""
     INSERT INTO geo_events
         (id, source_id, category, subcategory, title, body, severity,
          lat, lng, metadata, url, event_time)
     VALUES
         (:id, :source_id, :category, :subcategory, :title, :body, :severity,
          :lat, :lng, CAST(:metadata AS jsonb), :url, :event_time)
-    ON CONFLICT (id) DO UPDATE SET
-        lat        = EXCLUDED.lat,
-        lng        = EXCLUDED.lng,
-        event_time = EXCLUDED.event_time,
-        title      = EXCLUDED.title,
-        body       = EXCLUDED.body,
-        metadata   = EXCLUDED.metadata,
-        severity   = EXCLUDED.severity
 """)
 
 
 async def _persist_events(events: list) -> None:
-    """Bulk-upsert GeoEvents into geo_events table."""
+    """Persist GeoEvents via delete-then-insert (TimescaleDB hypertables
+    require the partition column in all unique constraints, so ON CONFLICT (id)
+    is not possible).
+    """
     if not events:
         return
+    import math
+
+    def _sanitize_metadata(meta: dict | None) -> str:
+        """Replace NaN/Inf floats with None so JSON serialization succeeds."""
+        if not meta:
+            return "{}"
+        clean = {}
+        for k, v in meta.items():
+            if isinstance(v, float) and not math.isfinite(v):
+                clean[k] = None
+            else:
+                clean[k] = v
+        return json.dumps(clean)
+
     rows = [
         {
             "id": e.id,
@@ -202,15 +239,18 @@ async def _persist_events(events: list) -> None:
             "severity": e.severity if isinstance(e.severity, str) else e.severity.value,
             "lat": float(e.lat),
             "lng": float(e.lng),
-            "metadata": json.dumps(e.metadata or {}),  # CAST AS jsonb handles string→jsonb
+            "metadata": _sanitize_metadata(e.metadata),
             "url": e.url,
             "event_time": e.event_time,
         }
         for e in events
+        if math.isfinite(e.lat) and math.isfinite(e.lng)
     ]
     try:
         async with AsyncSessionLocal() as session:
-            await session.execute(_UPSERT_SQL, rows)
+            ids = [r["id"] for r in rows]
+            await session.execute(_DELETE_EXISTING_SQL, {"ids": ids})
+            await session.execute(_INSERT_SQL, rows)
             await session.commit()
     except Exception as exc:
         logger.warning("db_persist_failed", extra={"error": str(exc)})

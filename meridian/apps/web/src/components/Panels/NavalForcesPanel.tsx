@@ -2,7 +2,7 @@ import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 import { useEventStore } from "@/stores/useEventStore";
 import { useFilteredEvents } from "@/stores/useFilteredEvents";
-import { SEVERITY_COLOR, timeAgo } from "@/lib/utils";
+import { timeAgo } from "@/lib/utils";
 import type { GeoEvent } from "@/types";
 
 export function NavalForcesPanel() {
@@ -54,7 +54,6 @@ function KpiBadge({ label, value, color }: { label: string; value: number; color
 
 function VesselRow({ event, onClick }: { event: GeoEvent; onClick: () => void }) {
   const meta = event.metadata as Record<string, unknown>;
-  const color = SEVERITY_COLOR[event.severity];
   const shipType = meta?.ship_type as string | undefined;
   const isMilitary = shipType === "35";
 

@@ -15,16 +15,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Drop the composite (id, ingested_at) primary key
+    # Change id column from UUID to Text so arbitrary string IDs work.
+    # Keep composite PK (id, ingested_at) — TimescaleDB hypertables require
+    # the partition column in all unique constraints / primary keys.
     op.execute("ALTER TABLE geo_events DROP CONSTRAINT geo_events_pkey")
-
-    # 2. Change id column from UUID to Text so arbitrary string IDs work
     op.execute("ALTER TABLE geo_events ALTER COLUMN id TYPE TEXT USING id::text")
+    op.execute(
+        "ALTER TABLE geo_events ADD CONSTRAINT geo_events_pkey "
+        "PRIMARY KEY (id, ingested_at)"
+    )
 
-    # 3. Re-create PK on id alone — enables ON CONFLICT (id) DO UPDATE
-    op.execute("ALTER TABLE geo_events ADD CONSTRAINT geo_events_pkey PRIMARY KEY (id)")
-
-    # 4. Index ingested_at as a regular column for time-range queries
+    # Index ingested_at as a regular column for time-range queries
     op.create_index("ix_geo_events_ingested_at", "geo_events", ["ingested_at"])
 
 

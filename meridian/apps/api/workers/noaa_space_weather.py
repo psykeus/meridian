@@ -1,4 +1,5 @@
 """NOAA Space Weather Prediction Center — solar flares and geomagnetic storm alerts."""
+import hashlib
 import httpx
 from datetime import datetime, timezone
 from workers.base import FeedWorker
@@ -62,7 +63,10 @@ class NOAASpaceWeatherWorker(FeedWorker):
                 except Exception:
                     ts = datetime.now(timezone.utc)
 
+            product_id = alert.get("product_id", "")
+            det_id = f"noaa_sw_{hashlib.md5(product_id.encode()).hexdigest()[:16]}" if product_id else f"noaa_sw_{int(ts.timestamp())}"
             events.append(GeoEvent(
+                id=det_id,
                 source_id=self.source_id,
                 title=title,
                 body=message[:600],

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 import httpx
+import starlette.requests
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
@@ -35,27 +36,77 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
+    request: "starlette.requests.Request",
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     db: AsyncSession = Depends(get_db),
 ) -> User:
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-    payload = decode_token(credentials.credentials)
-    if not payload or payload.get("type") != "access":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    raw = credentials.credentials
 
-    user_id = int(payload.get("sub", 0))
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
+    # Try JWT first
+    payload = decode_token(raw)
+    if payload and payload.get("type") == "access":
+        user_id = int(payload.get("sub", 0))
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        return user
 
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # Fall back to API token
+    from routers.tokens import get_user_by_api_token
+    required_scope = "write" if request.method in ("POST", "PUT", "PATCH", "DELETE") else None
+    user = await get_user_by_api_token(raw, db, required_scope=required_scope)
+    if user and user.is_active:
+        return user
 
-    return user
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+# ─── Per-IP rate limiting for sensitive auth endpoints ──────────────────────
+# Simple in-memory sliding window — limits brute-force and enumeration.
+
+_auth_rate_cache: dict[str, list[float]] = {}
+_AUTH_WINDOW = 300  # 5 minutes
+_AUTH_MAX_ATTEMPTS = 10  # max attempts per window
+
+
+_auth_rate_prune_time: float = 0
+_AUTH_PRUNE_INTERVAL = 60  # seconds between full cache prunes
+
+
+async def _check_auth_rate_limit(request: starlette.requests.Request) -> None:
+    import time
+    global _auth_rate_prune_time
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+
+    # Periodically prune stale IPs to prevent unbounded memory growth
+    if now - _auth_rate_prune_time > _AUTH_PRUNE_INTERVAL:
+        _auth_rate_prune_time = now
+        stale_ips = [
+            k for k, v in _auth_rate_cache.items()
+            if not v or now - v[-1] > _AUTH_WINDOW
+        ]
+        for k in stale_ips:
+            del _auth_rate_cache[k]
+
+    attempts = _auth_rate_cache.get(ip, [])
+    # Remove expired entries
+    attempts = [t for t in attempts if now - t < _AUTH_WINDOW]
+    if len(attempts) >= _AUTH_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts. Please try again later.",
+        )
+    attempts.append(now)
+    _auth_rate_cache[ip] = attempts
+
+
+@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED,
+             dependencies=[Depends(_check_auth_rate_limit)])
 async def register(body: UserCreate, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
@@ -67,15 +118,14 @@ async def register(body: UserCreate, db: AsyncSession = Depends(get_db)) -> Toke
         full_name=body.full_name,
         is_active=True,
         is_verified=False,
-        tier="free",
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    # Log email verification token for non-OAuth registrations
-    verification_token = create_email_verification_token(user.id, user.email)
-    logger.info(f"Email verification token for {user.email}: {verification_token}")
+    # TODO: send verification email via SendGrid (token never logged for security)
+    # verification_token = create_email_verification_token(user.id, user.email)
+    logger.info(f"User registered: {user.email} (id={user.id})")
 
     return TokenResponse(
         access_token=create_access_token(user.id, user.email),
@@ -84,7 +134,7 @@ async def register(body: UserCreate, db: AsyncSession = Depends(get_db)) -> Toke
     )
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(_check_auth_rate_limit)])
 async def login(body: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
@@ -225,15 +275,16 @@ class ForgotPasswordBody(BaseModel):
     email: EmailStr
 
 
-@router.post("/forgot-password")
+@router.post("/forgot-password", dependencies=[Depends(_check_auth_rate_limit)])
 async def forgot_password(body: ForgotPasswordBody, db: AsyncSession = Depends(get_db)):
     """Generate a password reset token. Always returns success to avoid leaking email existence."""
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
     if user:
-        token = create_password_reset_token(user.id, user.email)
-        logger.info(f"Password reset token for {user.email}: {token}")
+        token = create_password_reset_token(user.id, user.email, pw_hash=user.hashed_password)
+        # TODO: deliver via SendGrid — never log tokens
+        logger.info(f"Password reset requested for user_id={user.id}")
 
     return {"message": "If that email exists, a reset link has been sent."}
 
@@ -263,6 +314,15 @@ async def reset_password(body: ResetPasswordBody, db: AsyncSession = Depends(get
             detail="Invalid or expired reset token",
         )
 
+    # Prevent token replay: if the password has already been changed since
+    # this token was issued, the token's pw_hash won't match.
+    token_pw_hash = payload.get("pw_hash")
+    if token_pw_hash and token_pw_hash != user.hashed_password[:16]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reset token has already been used",
+        )
+
     user.hashed_password = hash_password(body.new_password)
     await db.commit()
     return {"message": "Password has been reset successfully"}
@@ -281,7 +341,8 @@ async def send_verification(
         return {"message": "Email already verified"}
 
     token = create_email_verification_token(current_user.id, current_user.email)
-    logger.info(f"Email verification token for {current_user.email}: {token}")
+    # TODO: deliver via SendGrid — never log tokens
+    logger.info(f"Verification email requested for user_id={current_user.id}")
     return {"message": "Verification email sent"}
 
 
@@ -361,7 +422,6 @@ async def google_sso(code: str, db: AsyncSession = Depends(get_db)) -> TokenResp
             avatar_url=avatar_url,
             is_active=True,
             is_verified=True,
-            tier="free",
         )
         db.add(user)
         await db.commit()

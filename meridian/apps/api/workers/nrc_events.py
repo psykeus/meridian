@@ -123,7 +123,7 @@ class NRCEventsWorker(FeedWorker):
     category = FeedCategory.nuclear
     refresh_interval = 3600  # hourly
 
-    _RSS_URL = "https://www.nrc.gov/reading-rm/doc-collections/event-status/event/en.rss"
+    _RSS_URL = "https://www.nrc.gov/public-involve/rss?feed=event"
 
     async def fetch(self) -> list[GeoEvent]:
         try:

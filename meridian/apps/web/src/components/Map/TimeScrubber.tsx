@@ -1,11 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useReplayStore } from "@/stores/useReplayStore";
 
 interface Props {
   onReplay: (startTime: Date, endTime: Date) => void;
   onLive: () => void;
 }
 
-const MAX_DAYS = 180;
 const PRESETS = [
   { label: "6h", hours: 6 },
   { label: "24h", hours: 24 },
@@ -20,14 +20,12 @@ export function TimeScrubber({ onReplay, onLive }: Props) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [startHoursBack, setStartHoursBack] = useState(24);
-  const [windowHours, setWindowHours] = useState(1);
+  const [windowHours, _setWindowHours] = useState(1);
   const [currentOffset, setCurrentOffset] = useState(0);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [showCustom, setShowCustom] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const toISO = (d: Date) => d.toISOString().slice(0, 16);
 
   const now = new Date();
 
@@ -64,10 +62,13 @@ export function TimeScrubber({ onReplay, onLive }: Props) {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [isPlaying, speed, windowHours, triggerReplay]);
 
+  const setGibsDate = useReplayStore((s) => s.setGibsDate);
+
   const handleLive = () => {
     setIsLive(true);
     setIsPlaying(false);
     setCurrentOffset(0);
+    setGibsDate(null);
     onLive();
   };
 
@@ -79,6 +80,9 @@ export function TimeScrubber({ onReplay, onLive }: Props) {
     setCurrentOffset(0);
     const start = new Date(now.getTime() - hours * 3600000);
     const end = now;
+    // Set GIBS date to the midpoint of the replay window
+    const mid = new Date((start.getTime() + end.getTime()) / 2);
+    setGibsDate(mid.toISOString().slice(0, 10));
     onReplay(start, end);
   };
 
@@ -86,10 +90,14 @@ export function TimeScrubber({ onReplay, onLive }: Props) {
     if (!customStart || !customEnd) return;
     setIsLive(false);
     setIsPlaying(false);
-    onReplay(new Date(customStart), new Date(customEnd));
+    const s = new Date(customStart);
+    const e = new Date(customEnd);
+    const mid = new Date((s.getTime() + e.getTime()) / 2);
+    setGibsDate(mid.toISOString().slice(0, 10));
+    onReplay(s, e);
   };
 
-  const [start, end] = getStartEnd();
+  const [start, _end] = getStartEnd();
 
   return (
     <div style={{

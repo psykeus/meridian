@@ -3,7 +3,7 @@ import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -63,11 +63,20 @@ async def list_members(org_id: int, current_user: CurrentUser, db: AsyncSession 
 
 @router.post("/{org_id}/members/{user_id}", response_model=OrgMemberResponse, status_code=201)
 async def invite_member(
-    org_id: int, user_id: int, role: str = "member",
-    current_user: CurrentUser = None, db: AsyncSession = Depends(get_db)
+    org_id: int, user_id: int, current_user: CurrentUser,
+    role: str = "member", db: AsyncSession = Depends(get_db),
 ):
     org = await _get_org_member_or_404(org_id, current_user.id, db)
     await _require_owner_or_admin(org_id, current_user.id, db)
+
+    # Enforce member limit using org's tier-based max_members
+    max_members = getattr(org, "max_members", 500) or 500
+    count_result = await db.execute(
+        select(func.count()).select_from(OrganizationMember).where(OrganizationMember.org_id == org_id)
+    )
+    current_count = count_result.scalar() or 0
+    if current_count >= max_members:
+        raise HTTPException(400, f"Organization has reached the member limit ({max_members})")
 
     existing = await db.execute(
         select(OrganizationMember).where(
@@ -89,8 +98,8 @@ async def invite_member(
 
 @router.delete("/{org_id}/members/{user_id}", status_code=204)
 async def remove_member(
-    org_id: int, user_id: int, current_user: CurrentUser = None,
-    db: AsyncSession = Depends(get_db)
+    org_id: int, user_id: int, current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
 ):
     await _require_owner_or_admin(org_id, current_user.id, db)
     result = await db.execute(

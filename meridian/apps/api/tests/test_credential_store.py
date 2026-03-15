@@ -49,17 +49,16 @@ class TestListConfigured:
         _cache.clear()
 
     def test_includes_cache_keys_with_values(self):
-        _cache["CONFIGURED_KEY"] = "has_value"
+        _cache["OPENAI_API_KEY"] = "has_value"
         result = list_configured()
-        assert "CONFIGURED_KEY" in result
+        assert "OPENAI_API_KEY" in result
 
     def test_excludes_keys_with_empty_values(self):
-        _cache["EMPTY_KEY"] = ""
-        # Also ensure it's not in env
+        _cache["OPENAI_API_KEY"] = ""
         result = list_configured()
-        assert "EMPTY_KEY" not in result
+        assert "OPENAI_API_KEY" not in result
 
     def test_includes_env_vars_with_values(self):
-        with patch.dict(os.environ, {"ENV_CONFIGURED": "value"}):
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "value"}):
             result = list_configured()
-            assert "ENV_CONFIGURED" in result
+            assert "ANTHROPIC_API_KEY" in result

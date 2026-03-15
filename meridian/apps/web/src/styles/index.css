@@ -103,7 +103,88 @@
   50%       { opacity: 0.4; }
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
+}
+
 /* MapLibre overrides */
 .maplibregl-map { font-family: 'Inter', sans-serif; }
 .maplibregl-ctrl-bottom-left,
 .maplibregl-ctrl-bottom-right { display: none; }
+
+/* Timeline replay — selected marker ring */
+.m-marker-selected {
+  box-shadow: 0 0 0 3px var(--green-primary), 0 0 8px var(--green-primary) !important;
+  border-radius: 50%;
+}
+
+/* ── Responsive breakpoints ──────────────────────────────────────────── */
+
+/* Tablet (≤1024px): tighter spacing */
+@media (max-width: 1024px) {
+  .panel-header { padding-left: 8px; padding-right: 8px; }
+  .data-row { padding-left: 8px; padding-right: 8px; }
+}
+
+/* Tablet: narrow side nav */
+@media (max-width: 1024px) {
+  .side-nav { width: 36px !important; }
+  .side-nav a { width: 28px !important; height: 28px !important; font-size: 14px !important; }
+}
+
+/* Mobile (≤640px): single column, full-width panels */
+@media (max-width: 640px) {
+  /* Hide side nav on mobile — use bottom nav instead */
+  .side-nav { display: none !important; }
+  .panel-header {
+    height: 36px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .panel-header span { font-size: 11px; }
+  .data-row {
+    min-height: 32px;
+    padding-left: 8px;
+    padding-right: 8px;
+    gap: 6px;
+  }
+  /* Show mobile bottom nav */
+  .mobile-bottom-nav { display: flex !important; }
+  /* Simplify top nav on mobile */
+  header { padding-left: 8px !important; padding-right: 8px !important; }
+  /* Add bottom padding for content so bottom nav doesn't overlap */
+  main { padding-bottom: 52px; }
+}
+
+/* ── react-grid-layout resize handle styling ──────────────────────────── */
+.react-resizable-handle {
+  background: none !important;
+  position: absolute;
+  width: 16px;
+  height: 16px;
+}
+.react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  opacity: 0.3;
+  transition: opacity 150ms;
+}
+.react-resizable-handle:hover::after {
+  opacity: 0.7;
+  border-color: var(--green-primary);
+}
+.react-grid-item.react-draggable-dragging {
+  z-index: 100;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  opacity: 0.9;
+}
+.react-grid-item > .react-resizable-handle {
+  z-index: 5;
+}

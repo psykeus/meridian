@@ -42,7 +42,7 @@ class TestListEvents:
         assert resp.status_code == 200
 
     async def test_limit_too_large_rejected(self, client):
-        resp = await client.get("/api/v1/events/?limit=9999")
+        resp = await client.get("/api/v1/events/?limit=10001")
         assert resp.status_code == 422
 
     async def test_category_filter_accepted(self, client):
@@ -68,11 +68,15 @@ class TestListEvents:
 
 class TestReplayEvents:
     async def test_returns_200_with_valid_range(self, client):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(days=7)).isoformat()
+        end = now.isoformat()
         resp = await client.get(
             "/api/v1/events/replay",
             params={
-                "start_time": "2024-01-01T00:00:00Z",
-                "end_time": "2024-01-07T00:00:00Z",
+                "start_time": start,
+                "end_time": end,
             },
         )
         assert resp.status_code == 200
@@ -103,22 +107,30 @@ class TestReplayEvents:
         assert resp.status_code == 400
 
     async def test_category_filter_in_replay(self, client):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(days=7)).isoformat()
+        end = now.isoformat()
         resp = await client.get(
             "/api/v1/events/replay",
             params={
-                "start_time": "2024-01-01T00:00:00Z",
-                "end_time": "2024-12-31T23:59:59Z",
+                "start_time": start,
+                "end_time": end,
                 "category": "environment",
             },
         )
         assert resp.status_code == 200
 
     async def test_limit_param_in_replay(self, client):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(days=7)).isoformat()
+        end = now.isoformat()
         resp = await client.get(
             "/api/v1/events/replay",
             params={
-                "start_time": "2024-01-01T00:00:00Z",
-                "end_time": "2024-12-31T23:59:59Z",
+                "start_time": start,
+                "end_time": end,
                 "limit": 500,
             },
         )

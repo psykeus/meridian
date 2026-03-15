@@ -20,8 +20,8 @@ export function PanelHeader({
   children,
 }: PanelHeaderProps) {
   return (
-    <div className="panel-header">
-      <div className="flex items-center gap-2 min-w-0">
+    <div className="panel-header panel-drag-handle" style={{ cursor: "grab" }}>
+      <div className="flex items-center gap-2 min-w-0" style={{ overflow: "hidden" }}>
         {isLive && <div className="live-dot healthy flex-shrink-0" />}
         <span
           className="font-semibold truncate"
@@ -40,7 +40,7 @@ export function PanelHeader({
         )}
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1" style={{ flexShrink: 0 }} onMouseDown={(e) => e.stopPropagation()}>
         {children}
         {onExpand && (
           <HeaderButton onClick={onExpand} title="Expand">⊞</HeaderButton>

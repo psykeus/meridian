@@ -31,9 +31,11 @@ _CATEGORY_WEIGHTS = {
 
 async def compute_risk_scores(hours: int = 168) -> list[dict]:
     """Compute risk scores for all countries with recent events."""
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         try:
             resp = await client.get(f"{API_BASE}/events", params={"hours_back": hours, "limit": 5000})
+            if resp.status_code != 200:
+                return []
             data = resp.json()
             events = data.get("items", data) if isinstance(data, dict) else data
         except Exception:

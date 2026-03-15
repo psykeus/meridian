@@ -102,7 +102,7 @@ class GDELTWorker(FeedWorker):
                     body=None,
                     lat=lat,
                     lng=lng,
-                    event_time=event_time.isoformat(),
+                    event_time=event_time,
                     url=source_url or None,
                     metadata={
                         "goldstein_scale": goldstein,

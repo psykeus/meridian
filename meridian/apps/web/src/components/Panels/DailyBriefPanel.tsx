@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { apiFetch } from "@/lib/api";
 import { PanelHeader } from "@/components/Panel/PanelHeader";
 import { PanelSummaryCard } from "@/components/Panel/PanelSummaryCard";
 
@@ -36,7 +37,7 @@ export function DailyBriefPanel() {
 
   const fetchBrief = async () => {
     try {
-      const resp = await fetch("/ai/brief/daily");
+      const resp = await apiFetch("/ai/brief/daily");
       if (resp.ok) setBrief(await resp.json());
     } catch {}
     finally { setLoading(false); }
@@ -44,7 +45,7 @@ export function DailyBriefPanel() {
 
   const refreshBrief = async () => {
     setRefreshing(true);
-    await fetch("/ai/brief/daily/refresh", { method: "POST" }).catch(() => {});
+    await apiFetch("/ai/brief/daily/refresh", { method: "POST" }).catch(() => {});
     await new Promise((r) => setTimeout(r, 2000));
     await fetchBrief();
     setRefreshing(false);
@@ -54,7 +55,7 @@ export function DailyBriefPanel() {
     setPersonalLoading(true);
     setPersonalBrief("");
     try {
-      const resp = await fetch("/ai/brief/personalized", {
+      const resp = await apiFetch("/ai/brief/personalized", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

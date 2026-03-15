@@ -1,13 +1,12 @@
 """CelesTrak TLE — notable satellite orbital tracking via Two-Line Element sets."""
-import hashlib
 import logging
-import math
 from datetime import datetime, timezone
 
 import httpx
 
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 from workers.base import FeedWorker
+from workers._orbit_propagation import tle_from_gp_json, propagate_tle
 
 logger = logging.getLogger(__name__)
 
@@ -34,42 +33,16 @@ _NOTABLE_SATELLITES = {
 }
 
 
-def _tle_epoch_to_datetime(epoch_year: int, epoch_day: float) -> datetime:
-    """Convert TLE epoch (2-digit year + fractional day) to a UTC datetime."""
-    if epoch_year < 57:
-        full_year = 2000 + epoch_year
-    else:
-        full_year = 1900 + epoch_year
-
-    base = datetime(full_year, 1, 1, tzinfo=timezone.utc)
-    # epoch_day is 1-based fractional day of year
-    from datetime import timedelta
-
-    return base + timedelta(days=epoch_day - 1)
-
-
-def _inclination_to_lat(inclination: float) -> float:
-    """Approximate a ground-track latitude from orbital inclination."""
-    lat = min(inclination, 90.0)
-    return max(-90.0, min(90.0, lat))
-
-
-def _compute_approx_lng(mean_anomaly: float, raan: float) -> float:
-    """Rough approximation of sub-satellite longitude from mean anomaly and RAAN."""
-    lng = (raan + mean_anomaly - 180.0) % 360.0 - 180.0
-    return max(-180.0, min(180.0, lng))
-
-
 class CelestrakTLEWorker(FeedWorker):
     """Tracks notable satellites (ISS, Tiangong, Hubble, weather sats, etc.)
-    using TLE data from CelesTrak. Parses GP (General Perturbations) data
-    in JSON format to produce map events at approximate sub-satellite positions."""
+    using TLE data from CelesTrak. Uses SGP4 propagation for accurate
+    sub-satellite positions."""
 
     source_id = "celestrak_tle"
     display_name = "CelesTrak Satellite Tracker"
     category = FeedCategory.space
     refresh_interval = 43200  # 12 hours
-    run_on_startup = False  # rate-limited public API
+    run_on_startup = True
 
     async def fetch(self) -> list[GeoEvent]:
         events: list[GeoEvent] = []
@@ -130,9 +103,21 @@ class CelestrakTLEWorker(FeedWorker):
                 else:
                     event_time = now
 
-                # Approximate sub-satellite point
-                lat = _inclination_to_lat(inclination)
-                lng = _compute_approx_lng(mean_anomaly, raan)
+                # Generate TLE lines from GP JSON for SGP4 propagation
+                try:
+                    tle_line1, tle_line2 = tle_from_gp_json(sat)
+                    pos = propagate_tle(tle_line1, tle_line2, now)
+                except Exception:
+                    pos = None
+                    tle_line1, tle_line2 = "", ""
+
+                if pos:
+                    lat, lng, alt_km = pos
+                else:
+                    # Fallback: crude approximation
+                    lat = max(-90.0, min(90.0, inclination))
+                    lng = (raan + mean_anomaly - 180.0) % 360.0 - 180.0
+                    alt_km = 0
 
                 # Severity: ISS and crewed stations are medium; rest are info
                 is_notable = norad_id in _NOTABLE_SATELLITES
@@ -145,7 +130,8 @@ class CelestrakTLEWorker(FeedWorker):
 
                 body_parts = [
                     f"NORAD {norad_id}",
-                    f"Inclination: {inclination:.1f}deg",
+                    f"Inclination: {inclination:.1f}\u00b0",
+                    f"Alt: {alt_km:.0f} km" if alt_km > 0 else None,
                     f"Period: {period_min} min" if period_min else None,
                     f"Mean Motion: {mean_motion}" if mean_motion else None,
                     f"Eccentricity: {eccentricity}" if eccentricity else None,
@@ -175,6 +161,10 @@ class CelestrakTLEWorker(FeedWorker):
                             "mean_motion": mean_motion,
                             "eccentricity": eccentricity,
                             "epoch": epoch_str,
+                            "altitude_km": round(alt_km, 1) if alt_km > 0 else None,
+                            "tle_line1": tle_line1,
+                            "tle_line2": tle_line2,
+                            "arg_of_pericenter": sat.get("ARG_OF_PERICENTER"),
                         },
                     )
                 )

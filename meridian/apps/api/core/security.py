@@ -51,11 +51,11 @@ def decode_token(token: str) -> Optional[dict]:
         return None
 
 
-def create_password_reset_token(user_id: int, email: str) -> str:
-    return _create_token(
-        {"sub": str(user_id), "email": email, "type": "password_reset"},
-        timedelta(hours=1),
-    )
+def create_password_reset_token(user_id: int, email: str, pw_hash: str = "") -> str:
+    payload = {"sub": str(user_id), "email": email, "type": "password_reset"}
+    if pw_hash:
+        payload["pw_hash"] = pw_hash[:16]  # prefix for replay detection
+    return _create_token(payload, timedelta(hours=1))
 
 
 def create_email_verification_token(user_id: int, email: str) -> str:

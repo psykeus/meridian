@@ -2,7 +2,7 @@ import logging
 import httpx
 from datetime import datetime, timezone
 from typing import List
-from core.config import get_settings
+from core.credential_store import get_credential
 from .base import FeedWorker
 from models.geo_event import GeoEvent, FeedCategory, SeverityLevel
 
@@ -42,8 +42,7 @@ class AlphaVantageWorker(FeedWorker):
     refresh_interval = 300  # 5 minutes
 
     async def fetch(self) -> List[GeoEvent]:
-        settings = get_settings()
-        api_key = settings.alpha_vantage_api_key or "demo"
+        api_key = get_credential("ALPHA_VANTAGE_API_KEY") or "demo"
         if api_key == "demo":
             logger.warning("alpha_vantage_demo_key — rate-limited to 5 calls/day. Set ALPHA_VANTAGE_API_KEY for production use.")
         events: List[GeoEvent] = []

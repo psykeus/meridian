@@ -40,9 +40,9 @@ class TestSettingsDefaults:
         s = Settings(_env_file=None, database_url="postgresql+asyncpg://x:x@localhost/x")
         assert s.algorithm == "HS256"
 
-    def test_default_access_token_expire_60_min(self):
+    def test_default_access_token_expire_24h(self):
         s = Settings(_env_file=None, database_url="postgresql+asyncpg://x:x@localhost/x")
-        assert s.access_token_expire_minutes == 60
+        assert s.access_token_expire_minutes == 1440
 
     def test_default_refresh_token_expire_30_days(self):
         s = Settings(_env_file=None, database_url="postgresql+asyncpg://x:x@localhost/x")
@@ -62,7 +62,6 @@ class TestSettingsDefaults:
         assert s.alpha_vantage_api_key == ""
         assert s.opensky_client_id == ""
         assert s.sendgrid_api_key == ""
-        assert s.stripe_secret_key == ""
 
 
 # ── CORS origins parsing ────────────────────────────────────────────────────

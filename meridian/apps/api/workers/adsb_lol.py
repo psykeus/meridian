@@ -13,7 +13,7 @@ class ADSBLolWorker(FeedWorker):
     source_id = "adsb_lol"
     display_name = "adsb.lol — Open ADS-B Feed"
     category = FeedCategory.military
-    refresh_interval = 30
+    refresh_interval = 75
 
     _URL = "https://api.adsb.lol/v2/mil"
 
@@ -61,7 +61,7 @@ class ADSBLolWorker(FeedWorker):
                 title=f"{'⚠️ ' if squawk in ('7700','7600','7500') else ''}Military: {callsign or hex_code} [{t or 'Unknown'}]",
                 body=f"Alt: {alt_baro}ft · GS: {gs}kts · Squawk: {squawk}" + (f" · {desc}" if desc else ""),
                 lat=float(lat), lng=float(lng),
-                event_time=now.isoformat(),
+                event_time=now,
                 url="https://adsb.lol/",
                 metadata={"hex": hex_code, "callsign": callsign, "alt_baro": alt_baro, "squawk": squawk, "type": t},
             ))

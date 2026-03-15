@@ -29,11 +29,20 @@ _STATES_URL = "https://opensky-network.org/api/states/all"
 # Limit total aircraft events per fetch to keep DB manageable
 _MAX_AIRCRAFT = 1000
 
+# Bounding boxes for areas of interest (lamin, lomin, lamax, lomax)
+# Reduces response size and avoids pulling the entire world
+_BOUNDING_BOXES = [
+    {"lamin": 24, "lomin": -125, "lamax": 50, "lomax": -66},   # CONUS
+    {"lamin": 35, "lomin": -12, "lamax": 72, "lomax": 45},     # Europe
+    {"lamin": -10, "lomin": 90, "lamax": 55, "lomax": 155},    # East Asia / Oceania
+    {"lamin": 10, "lomin": 30, "lamax": 45, "lomax": 75},      # Middle East / Central Asia
+]
+
 
 class OpenSkyWorker(FeedWorker):
-    """OpenSky Network — live ADS-B flight states for ALL airborne aircraft.
+    """OpenSky Network — live ADS-B flight states for areas of interest.
 
-    Emits every airborne aircraft visible to ADS-B:
+    Emits airborne aircraft visible to ADS-B in configured bounding boxes:
       - Emergency squawks (7700/7600/7500): critical/high/medium severity
       - All other airborne aircraft: info severity
 
@@ -46,7 +55,7 @@ class OpenSkyWorker(FeedWorker):
     source_id = "opensky"
     display_name = "OpenSky Aircraft Tracking"
     category = FeedCategory.aviation
-    refresh_interval = 60  # seconds — OpenSky anonymous: 10 req/min; authenticated: higher
+    refresh_interval = 120  # seconds — conservative for anonymous (~100 req/day free tier)
     run_on_startup = False  # avoid anonymous rate-limit (429) on every API restart
 
     def __init__(self) -> None:
@@ -99,20 +108,51 @@ class OpenSkyWorker(FeedWorker):
             token = await self._get_bearer_token(client)
             auth_kwargs = self._build_auth(token)
 
-            try:
-                resp = await client.get(
-                    _STATES_URL,
-                    params={"extended": 1},
-                    **auth_kwargs,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-            except Exception:
-                return []
+            has_creds = bool(token or get_credential("OPENSKY_USERNAME"))
 
-        states = data.get("states") or []
+            # With credentials: can poll globally more frequently
+            # Without: use bounding boxes to reduce load and stay under limits
+            if has_creds:
+                # Authenticated users get ~4000 req/day; 60s interval is fine
+                self.refresh_interval = 60
+                try:
+                    resp = await client.get(
+                        _STATES_URL,
+                        params={"extended": 1},
+                        **auth_kwargs,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code == 429:
+                        self.refresh_interval = min(self.refresh_interval * 2, 300)
+                    return []
+                except Exception:
+                    return []
+                states = data.get("states") or []
+            else:
+                # Anonymous: fetch only areas of interest via bounding boxes
+                # Each bbox is a separate request; keep interval at 120s
+                self.refresh_interval = 120
+                states = []
+                for bbox in _BOUNDING_BOXES:
+                    try:
+                        resp = await client.get(
+                            _STATES_URL,
+                            params={"extended": 1, **bbox},
+                            **auth_kwargs,
+                        )
+                        if resp.status_code == 429:
+                            # Back off — double the interval up to 5 minutes
+                            self.refresh_interval = min(self.refresh_interval * 2, 300)
+                            break
+                        resp.raise_for_status()
+                        box_data = resp.json()
+                        states.extend(box_data.get("states") or [])
+                    except Exception:
+                        continue
         events: List[GeoEvent] = []
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_dt = datetime.now(timezone.utc)
 
         for state in states[:_MAX_AIRCRAFT]:
             try:
@@ -162,7 +202,7 @@ class OpenSkyWorker(FeedWorker):
                     body=body,
                     lat=float(lat),
                     lng=float(lng),
-                    event_time=now_iso,
+                    event_time=now_dt,
                     metadata={
                         "icao24": icao24,
                         "callsign": callsign_str,

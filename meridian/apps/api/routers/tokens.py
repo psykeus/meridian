@@ -78,8 +78,12 @@ async def revoke_token(token_id: int, current_user: CurrentUser, db: AsyncSessio
     await db.commit()
 
 
-async def get_user_by_api_token(raw_token: str, db: AsyncSession) -> User | None:
-    """Validate a raw API token and return the owning user (or None)."""
+async def get_user_by_api_token(raw_token: str, db: AsyncSession, required_scope: str | None = None) -> User | None:
+    """Validate a raw API token and return the owning user (or None).
+
+    If required_scope is provided (e.g. "write"), the token's scope must be
+    at least that level. Scope hierarchy: write > read.
+    """
     h = hashlib.sha256(raw_token.encode()).hexdigest()
     result = await db.execute(
         select(APIToken).where(
@@ -91,6 +95,10 @@ async def get_user_by_api_token(raw_token: str, db: AsyncSession) -> User | None
     if not token:
         return None
     if token.expires_at and token.expires_at < datetime.now(timezone.utc):
+        return None
+
+    # Enforce scope: "write" tokens can do everything, "read" tokens are read-only
+    if required_scope == "write" and token.scope == "read":
         return None
 
     await db.execute(

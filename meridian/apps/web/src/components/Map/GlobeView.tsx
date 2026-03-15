@@ -43,7 +43,7 @@ export function GlobeView({ events = [], onClose }: Props) {
           category: e.category,
         }));
 
-        globe = GlobeGL()(containerRef.current)
+        globe = (GlobeGL as any)(containerRef.current)
           .globeImageUrl("//unpkg.com/three-globe/example/img/earth-night.jpg")
           .bumpImageUrl("//unpkg.com/three-globe/example/img/earth-topology.png")
           .backgroundImageUrl("//unpkg.com/three-globe/example/img/night-sky.png")

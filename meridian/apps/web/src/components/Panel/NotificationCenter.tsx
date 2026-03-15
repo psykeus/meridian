@@ -1,15 +1,27 @@
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { useAlertStore } from "@/stores/useAlertStore";
+import { useInsightStore } from "@/stores/useInsightStore";
 import { SEVERITY_COLOR, timeAgo } from "@/lib/utils";
+import type { AnomalyInsight } from "./InsightDetailDrawer";
 
-interface AnomalyInsight {
-  type: string;
-  title: string;
-  description: string;
-  severity: string;
-  detected_at: string;
-  lat?: number;
-  lng?: number;
+const ANOMALY_TYPE_ICONS: Record<string, string> = {
+  volume_spike: "📊",
+  vessel_clustering: "⚓",
+  quake_near_nuclear: "☢",
+  osint_cluster: "🔗",
+  commodity_conflict_correlation: "◈",
+  bgp_advisory_concurrent: "⚡",
+};
+
+/** Load user's enabled anomaly type preferences from localStorage. */
+function getEnabledTypes(): Set<string> {
+  try {
+    const raw = localStorage.getItem("meridian:insight_types");
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* ignore */ }
+  // Default: all enabled
+  return new Set(["volume_spike", "vessel_clustering", "quake_near_nuclear", "osint_cluster", "commodity_conflict_correlation", "bgp_advisory_concurrent"]);
 }
 
 export function NotificationCenter() {
@@ -24,6 +36,7 @@ export function NotificationCenter() {
   } = useAlertStore();
 
   const [anomalies, setAnomalies] = useState<AnomalyInsight[]>([]);
+  const setSelectedInsight = useInsightStore((s) => s.setSelectedInsight);
 
   useEffect(() => {
     fetchNotifications();
@@ -33,7 +46,7 @@ export function NotificationCenter() {
   useEffect(() => {
     const fetchAnomalies = async () => {
       try {
-        const resp = await fetch("/ai/anomalies");
+        const resp = await apiFetch("/ai/anomalies");
         if (resp.ok) setAnomalies(await resp.json());
       } catch { /* AI service may be offline */ }
     };
@@ -49,7 +62,26 @@ export function NotificationCenter() {
     return () => document.removeEventListener("meridian:toggle-notifications", handler);
   }, [toggleNotificationPanel]);
 
-  const totalUnread = unreadCount + anomalies.length;
+  // Filter anomalies by user preferences
+  const enabledTypes = getEnabledTypes();
+  const filteredAnomalies = anomalies.filter((a) => enabledTypes.has(a.type));
+
+  // Limit to user's max setting
+  const maxInsights = (() => {
+    try {
+      const raw = localStorage.getItem("meridian:insight_max");
+      if (raw) return parseInt(raw, 10);
+    } catch { /* ignore */ }
+    return 8;
+  })();
+  const visibleAnomalies = filteredAnomalies.slice(0, maxInsights);
+
+  const totalUnread = unreadCount + visibleAnomalies.length;
+
+  const handleInsightClick = (anomaly: AnomalyInsight) => {
+    setSelectedInsight(anomaly);
+    toggleNotificationPanel(); // close the dropdown
+  };
 
   return (
     <div style={{ position: "relative" }}>
@@ -87,7 +119,7 @@ export function NotificationCenter() {
           <div
             style={{
               position: "absolute", top: "calc(100% + 8px)", right: 0,
-              width: 340, maxHeight: 480,
+              width: 360, maxHeight: 520,
               background: "var(--bg-panel)", border: "1px solid var(--border)",
               borderRadius: 6, boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
               zIndex: 50, display: "flex", flexDirection: "column", overflow: "hidden",
@@ -114,25 +146,46 @@ export function NotificationCenter() {
 
             <div style={{ overflowY: "auto", flex: 1 }}>
               {/* AI Anomaly Insights */}
-              {anomalies.length > 0 && (
+              {visibleAnomalies.length > 0 && (
                 <>
-                  <div style={{ padding: "6px 12px", fontSize: 9, fontWeight: 700, color: "#bb86fc", textTransform: "uppercase", letterSpacing: "0.07em", background: "rgba(187,134,252,.06)" }}>
-                    AI Insights
+                  <div style={{
+                    padding: "6px 12px", fontSize: 9, fontWeight: 700, color: "#bb86fc",
+                    textTransform: "uppercase", letterSpacing: "0.07em",
+                    background: "rgba(187,134,252,.06)",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                  }}>
+                    <span>AI Insights</span>
+                    <span style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 400 }}>
+                      Click to explore
+                    </span>
                   </div>
-                  {anomalies.slice(0, 5).map((a, i) => (
+                  {visibleAnomalies.map((a, i) => (
                     <div
                       key={`anomaly-${i}`}
+                      onClick={() => handleInsightClick(a)}
                       style={{
                         display: "flex", gap: 10, padding: "10px 12px",
                         borderBottom: "1px solid var(--border)",
                         background: "rgba(187,134,252,.04)",
+                        cursor: "pointer",
+                        transition: "background 150ms",
                       }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(187,134,252,.10)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(187,134,252,.04)")}
                     >
                       <div style={{ width: 3, borderRadius: 2, background: "#bb86fc", flexShrink: 0, alignSelf: "stretch" }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
-                          <span style={{ fontSize: 10, color: "#bb86fc", fontWeight: 700 }}>✦</span>
-                          <span style={{ fontSize: 12, color: "var(--text-primary)" }}>{a.title}</span>
+                          <span style={{ fontSize: 10 }}>{ANOMALY_TYPE_ICONS[a.type] ?? "✦"}</span>
+                          <span style={{ fontSize: 12, color: "var(--text-primary)", fontWeight: 500 }}>{a.title}</span>
+                          {a.event_ids && a.event_ids.length > 0 && (
+                            <span style={{
+                              fontSize: 9, padding: "1px 5px", borderRadius: 3, marginLeft: "auto",
+                              background: "rgba(187,134,252,0.15)", color: "#bb86fc", fontWeight: 600,
+                            }}>
+                              {a.event_ids.length} events
+                            </span>
+                          )}
                         </div>
                         {a.description && (
                           <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -143,13 +196,14 @@ export function NotificationCenter() {
                           {a.detected_at ? timeAgo(a.detected_at) : "Just detected"}
                         </div>
                       </div>
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", alignSelf: "center", flexShrink: 0 }}>→</span>
                     </div>
                   ))}
                 </>
               )}
 
               {/* Regular Notifications */}
-              {notifications.length === 0 && anomalies.length === 0 ? (
+              {notifications.length === 0 && visibleAnomalies.length === 0 ? (
                 <div style={{ padding: 24, textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
                   No notifications
                 </div>
@@ -181,6 +235,7 @@ export function NotificationCenter() {
           </div>
         </>
       )}
+
     </div>
   );
 }

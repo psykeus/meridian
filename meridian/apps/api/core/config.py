@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # Auth
     secret_key: str = "change-me-to-a-random-64-char-string"
-    access_token_expire_minutes: int = 60
+    access_token_expire_minutes: int = 1440  # 24 hours
     refresh_token_expire_days: int = 30
     algorithm: str = "HS256"
 
@@ -61,10 +61,6 @@ class Settings(BaseSettings):
     # Email
     sendgrid_api_key: str = ""
     email_from: str = "noreply@meridian.local"
-
-    # Stripe
-    stripe_secret_key: str = ""
-    stripe_webhook_secret: str = ""
 
     # Google OAuth
     google_client_id: str = ""

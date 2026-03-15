@@ -1,8 +1,19 @@
-import httpx
+"""NASA FIRMS VIIRS active fire detections (NOAA-20, NRT, 24h, global)."""
+import csv
+import io
+import logging
 from datetime import datetime, timezone
 from typing import List
+
+import httpx
+
+from core.credential_store import get_credential
+from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
 from .base import FeedWorker
-from models.geo_event import GeoEvent, FeedCategory, SeverityLevel
+
+logger = logging.getLogger(__name__)
+
+_FIRMS_URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv"
 
 
 class NASAFIRMSWorker(FeedWorker):
@@ -13,36 +24,42 @@ class NASAFIRMSWorker(FeedWorker):
     category = FeedCategory.environment
     refresh_interval = 10800  # 3 hours
 
-    # Public CSV endpoint requires MAP_KEY — falls back to world fire events GeoJSON
-    _GEOJSON_URL = (
-        "https://firms.modaps.eosdis.nasa.gov/api/country/csv/"
-        "VIIRS_SNPP_NRT/World/1"
-    )
-    _FALLBACK_URL = (
-        "https://firms.modaps.eosdis.nasa.gov/active_fire/noaa-20-viirs-c2/"
-        "json/J1_VIIRS_C2_Global_24h.json"
-    )
-
     async def fetch(self) -> List[GeoEvent]:
-        async with httpx.AsyncClient(timeout=30) as client:
+        map_key = get_credential("FIRMS_MAP_KEY")
+        if not map_key:
+            logger.warning("FIRMS_MAP_KEY not configured — skipping NASA FIRMS fetch")
+            return []
+
+        url = f"{_FIRMS_URL}/{map_key}/VIIRS_NOAA20_NRT/world/1"
+
+        async with httpx.AsyncClient(timeout=60) as client:
             try:
-                resp = await client.get(self._FALLBACK_URL)
+                resp = await client.get(url)
                 resp.raise_for_status()
-                data = resp.json()
             except Exception:
+                logger.exception("Failed to fetch NASA FIRMS data")
                 return []
 
+        reader = csv.DictReader(io.StringIO(resp.text))
+        rows = list(reader)
+
+        # Sort by FRP descending, take top 200
+        try:
+            rows.sort(key=lambda r: float(r.get("frp", 0) or 0), reverse=True)
+        except (ValueError, TypeError):
+            pass
+        rows = rows[:200]
+
         events: List[GeoEvent] = []
-        features = data.get("features") if isinstance(data, dict) else data if isinstance(data, list) else []
-        for feat in features[:200]:
+        for row in rows:
             try:
-                props = feat.get("properties", feat)
-                geom = feat.get("geometry", {})
-                if geom.get("type") != "Point":
+                lat = float(row.get("latitude", 0))
+                lng = float(row.get("longitude", 0))
+                if lat == 0 and lng == 0:
                     continue
-                lng, lat = geom["coordinates"][:2]
-                brightness = float(props.get("bright_ti4") or props.get("brightness") or 300)
-                frp = float(props.get("frp") or 0)
+
+                brightness = float(row.get("brightness", 0) or row.get("bright_ti4", 0) or 300)
+                frp = float(row.get("frp", 0) or 0)
 
                 if frp >= 100 or brightness >= 400:
                     severity = SeverityLevel.critical
@@ -53,8 +70,8 @@ class NASAFIRMSWorker(FeedWorker):
                 else:
                     severity = SeverityLevel.low
 
-                acq_date = props.get("acq_date", "")
-                acq_time = str(props.get("acq_time", "0000")).zfill(4)
+                acq_date = row.get("acq_date", "")
+                acq_time = str(row.get("acq_time", "0000")).zfill(4)
                 try:
                     event_time = datetime.strptime(f"{acq_date} {acq_time}", "%Y-%m-%d %H%M").replace(tzinfo=timezone.utc)
                 except Exception:
@@ -70,8 +87,13 @@ class NASAFIRMSWorker(FeedWorker):
                     lat=lat,
                     lng=lng,
                     event_time=event_time,
-                    metadata={"brightness": brightness, "frp": frp,
-                               "satellite": props.get("satellite", "VIIRS")},
+                    metadata={
+                        "brightness": brightness,
+                        "frp": frp,
+                        "satellite": row.get("satellite", "VIIRS"),
+                        "confidence": row.get("confidence", ""),
+                        "daynight": row.get("daynight", ""),
+                    },
                 ))
             except Exception:
                 continue

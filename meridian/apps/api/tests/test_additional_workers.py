@@ -6,13 +6,14 @@ import pytest
 import respx
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from unittest.mock import patch
 from httpx import Response
 
 from models.geo_event import SeverityLevel, FeedCategory
 from workers.noaa_alerts import NOAAWeatherAlertsWorker, NOAA_ALERTS_URL
 from workers.gdacs import GDACSWorker
-from workers.nasa_firms import NASAFIRMSWorker
-from workers.acled import ACLEDConflictWorker
+from workers.nasa_firms import NASAFIRMSWorker, _FIRMS_URL
+from workers.acled import ACLEDConflictWorker, ACLED_URL
 from workers.cisa_kev import CISAKEVWorker
 
 pytestmark = pytest.mark.asyncio
@@ -169,94 +170,100 @@ class TestNOAAWeatherAlertsWorker:
 # ── NASA FIRMS ───────────────────────────────────────────────────────────────
 
 class TestNASAFIRMSWorker:
-    def _firms_feature(self, lat=34.0, lng=-118.0, frp=50.0, brightness=350.0,
-                       acq_date="2024-06-01", acq_time="1200"):
-        """Build a GeoJSON feature matching NASA FIRMS format.
+    """NASA FIRMS worker now fetches CSV from the FIRMS API with a MAP_KEY."""
 
-        The worker iterates `data.get("features") or data` and for each item
-        accesses `.get("geometry", {})` and `.get("properties", feat)`.
-        """
-        return {
-            "properties": {
-                "bright_ti4": brightness,
-                "frp": frp,
-                "acq_date": acq_date,
-                "acq_time": acq_time,
-                "satellite": "VIIRS",
-            },
-            "geometry": {"type": "Point", "coordinates": [lng, lat]},
-        }
+    _CSV_HEADER = "latitude,longitude,brightness,bright_ti4,acq_date,acq_time,satellite,confidence,frp,daynight"
 
-    def _payload(self, features):
-        """Wrap features in a GeoJSON FeatureCollection dict."""
-        return {"type": "FeatureCollection", "features": features}
+    def _csv_row(self, lat=34.0, lng=-118.0, frp=50.0, brightness=350.0,
+                 acq_date="2024-06-01", acq_time="1200"):
+        return f"{lat},{lng},{brightness},{brightness},{acq_date},{acq_time},VIIRS,nominal,{frp},D"
 
-    async def test_parses_fire_event(self):
+    def _csv_payload(self, rows):
+        return self._CSV_HEADER + "\n" + "\n".join(rows)
+
+    @patch("workers.nasa_firms.get_credential", return_value="FAKE_MAP_KEY")
+    async def test_parses_fire_event(self, mock_cred):
+        csv_text = self._csv_payload([self._csv_row()])
         with respx.mock:
-            respx.get(NASAFIRMSWorker._FALLBACK_URL).mock(
-                return_value=Response(200, json=self._payload([self._firms_feature()]))
+            respx.get(f"{_FIRMS_URL}/FAKE_MAP_KEY/VIIRS_NOAA20_NRT/world/1").mock(
+                return_value=Response(200, text=csv_text)
             )
             events = await NASAFIRMSWorker().fetch()
 
         assert len(events) == 1
         assert events[0].source_id == "nasa_firms"
 
-    async def test_frp_100_is_critical(self):
+    @patch("workers.nasa_firms.get_credential", return_value="FAKE_MAP_KEY")
+    async def test_frp_100_is_critical(self, mock_cred):
+        csv_text = self._csv_payload([self._csv_row(frp=100)])
         with respx.mock:
-            respx.get(NASAFIRMSWorker._FALLBACK_URL).mock(
-                return_value=Response(200, json=self._payload([self._firms_feature(frp=100)]))
+            respx.get(f"{_FIRMS_URL}/FAKE_MAP_KEY/VIIRS_NOAA20_NRT/world/1").mock(
+                return_value=Response(200, text=csv_text)
             )
             events = await NASAFIRMSWorker().fetch()
 
         assert events[0].severity == SeverityLevel.critical
 
-    async def test_frp_30_is_high(self):
+    @patch("workers.nasa_firms.get_credential", return_value="FAKE_MAP_KEY")
+    async def test_frp_30_is_high(self, mock_cred):
+        csv_text = self._csv_payload([self._csv_row(frp=30, brightness=300)])
         with respx.mock:
-            respx.get(NASAFIRMSWorker._FALLBACK_URL).mock(
-                return_value=Response(200, json=self._payload([self._firms_feature(frp=30, brightness=300)]))
+            respx.get(f"{_FIRMS_URL}/FAKE_MAP_KEY/VIIRS_NOAA20_NRT/world/1").mock(
+                return_value=Response(200, text=csv_text)
             )
             events = await NASAFIRMSWorker().fetch()
 
         assert events[0].severity == SeverityLevel.high
 
-    async def test_frp_10_is_medium(self):
+    @patch("workers.nasa_firms.get_credential", return_value="FAKE_MAP_KEY")
+    async def test_frp_10_is_medium(self, mock_cred):
+        csv_text = self._csv_payload([self._csv_row(frp=10, brightness=300)])
         with respx.mock:
-            respx.get(NASAFIRMSWorker._FALLBACK_URL).mock(
-                return_value=Response(200, json=self._payload([self._firms_feature(frp=10, brightness=300)]))
+            respx.get(f"{_FIRMS_URL}/FAKE_MAP_KEY/VIIRS_NOAA20_NRT/world/1").mock(
+                return_value=Response(200, text=csv_text)
             )
             events = await NASAFIRMSWorker().fetch()
 
         assert events[0].severity == SeverityLevel.medium
 
-    async def test_low_frp_is_low(self):
+    @patch("workers.nasa_firms.get_credential", return_value="FAKE_MAP_KEY")
+    async def test_low_frp_is_low(self, mock_cred):
+        csv_text = self._csv_payload([self._csv_row(frp=5, brightness=300)])
         with respx.mock:
-            respx.get(NASAFIRMSWorker._FALLBACK_URL).mock(
-                return_value=Response(200, json=self._payload([self._firms_feature(frp=5, brightness=300)]))
+            respx.get(f"{_FIRMS_URL}/FAKE_MAP_KEY/VIIRS_NOAA20_NRT/world/1").mock(
+                return_value=Response(200, text=csv_text)
             )
             events = await NASAFIRMSWorker().fetch()
 
         assert events[0].severity == SeverityLevel.low
 
-    async def test_brightness_400_is_critical(self):
+    @patch("workers.nasa_firms.get_credential", return_value="FAKE_MAP_KEY")
+    async def test_brightness_400_is_critical(self, mock_cred):
+        csv_text = self._csv_payload([self._csv_row(frp=5, brightness=400)])
         with respx.mock:
-            respx.get(NASAFIRMSWorker._FALLBACK_URL).mock(
-                return_value=Response(200, json=self._payload([self._firms_feature(frp=5, brightness=400)]))
+            respx.get(f"{_FIRMS_URL}/FAKE_MAP_KEY/VIIRS_NOAA20_NRT/world/1").mock(
+                return_value=Response(200, text=csv_text)
             )
             events = await NASAFIRMSWorker().fetch()
 
         assert events[0].severity == SeverityLevel.critical
 
-    async def test_returns_empty_on_failure(self):
+    @patch("workers.nasa_firms.get_credential", return_value="FAKE_MAP_KEY")
+    async def test_returns_empty_on_failure(self, mock_cred):
         with respx.mock:
-            respx.get(NASAFIRMSWorker._FALLBACK_URL).mock(return_value=Response(500))
+            respx.get(f"{_FIRMS_URL}/FAKE_MAP_KEY/VIIRS_NOAA20_NRT/world/1").mock(
+                return_value=Response(500)
+            )
             events = await NASAFIRMSWorker().fetch()
 
         assert events == []
 
-    async def test_metadata_includes_frp_and_brightness(self):
+    @patch("workers.nasa_firms.get_credential", return_value="FAKE_MAP_KEY")
+    async def test_metadata_includes_frp_and_brightness(self, mock_cred):
+        csv_text = self._csv_payload([self._csv_row(frp=42.5, brightness=355.0)])
         with respx.mock:
-            respx.get(NASAFIRMSWorker._FALLBACK_URL).mock(
-                return_value=Response(200, json=self._payload([self._firms_feature(frp=42.5, brightness=355.0)]))
+            respx.get(f"{_FIRMS_URL}/FAKE_MAP_KEY/VIIRS_NOAA20_NRT/world/1").mock(
+                return_value=Response(200, text=csv_text)
             )
             events = await NASAFIRMSWorker().fetch()
 
@@ -542,100 +549,85 @@ class TestACLEDConflictWorker:
         events = await worker.fetch()
         assert events == []
 
-    async def test_battle_maps_to_high(self):
-        worker = ACLEDConflictWorker()
-        worker._settings = type("S", (), {
-            "acled_api_key": "test_key", "acled_email": "test@test.com"
-        })()
+    def _mock_creds(self, key):
+        return {"ACLED_API_KEY": "test_key", "ACLED_EMAIL": "test@test.com"}.get(key, "")
 
+    @patch("workers.acled.get_credential")
+    async def test_battle_maps_to_high(self, mock_cred):
+        mock_cred.side_effect = self._mock_creds
         with respx.mock:
-            respx.get("https://api.acleddata.com/acled/read").mock(
+            respx.get(ACLED_URL).mock(
                 return_value=Response(200, json=self._acled_payload([
                     self._acled_row(event_type="Battles", fatalities=0)
                 ]))
             )
-            events = await worker.fetch()
+            events = await ACLEDConflictWorker().fetch()
 
         assert events[0].severity == SeverityLevel.high
 
-    async def test_protests_maps_to_low(self):
-        worker = ACLEDConflictWorker()
-        worker._settings = type("S", (), {
-            "acled_api_key": "test_key", "acled_email": "test@test.com"
-        })()
-
+    @patch("workers.acled.get_credential")
+    async def test_protests_maps_to_low(self, mock_cred):
+        mock_cred.side_effect = self._mock_creds
         with respx.mock:
-            respx.get("https://api.acleddata.com/acled/read").mock(
+            respx.get(ACLED_URL).mock(
                 return_value=Response(200, json=self._acled_payload([
                     self._acled_row(event_type="Protests", fatalities=0)
                 ]))
             )
-            events = await worker.fetch()
+            events = await ACLEDConflictWorker().fetch()
 
         assert events[0].severity == SeverityLevel.low
 
-    async def test_fatalities_50_boosts_to_critical(self):
-        worker = ACLEDConflictWorker()
-        worker._settings = type("S", (), {
-            "acled_api_key": "test_key", "acled_email": "test@test.com"
-        })()
-
+    @patch("workers.acled.get_credential")
+    async def test_fatalities_50_boosts_to_critical(self, mock_cred):
+        mock_cred.side_effect = self._mock_creds
         with respx.mock:
-            respx.get("https://api.acleddata.com/acled/read").mock(
+            respx.get(ACLED_URL).mock(
                 return_value=Response(200, json=self._acled_payload([
                     self._acled_row(event_type="Protests", fatalities=50)
                 ]))
             )
-            events = await worker.fetch()
+            events = await ACLEDConflictWorker().fetch()
 
         assert events[0].severity == SeverityLevel.critical
 
-    async def test_fatalities_10_boosts_to_high(self):
-        worker = ACLEDConflictWorker()
-        worker._settings = type("S", (), {
-            "acled_api_key": "test_key", "acled_email": "test@test.com"
-        })()
-
+    @patch("workers.acled.get_credential")
+    async def test_fatalities_10_boosts_to_high(self, mock_cred):
+        mock_cred.side_effect = self._mock_creds
         with respx.mock:
-            respx.get("https://api.acleddata.com/acled/read").mock(
+            respx.get(ACLED_URL).mock(
                 return_value=Response(200, json=self._acled_payload([
                     self._acled_row(event_type="Protests", fatalities=10)
                 ]))
             )
-            events = await worker.fetch()
+            events = await ACLEDConflictWorker().fetch()
 
         assert events[0].severity == SeverityLevel.high
 
-    async def test_skips_entries_with_invalid_coordinates(self):
-        worker = ACLEDConflictWorker()
-        worker._settings = type("S", (), {
-            "acled_api_key": "test_key", "acled_email": "test@test.com"
-        })()
-
+    @patch("workers.acled.get_credential")
+    async def test_skips_entries_with_invalid_coordinates(self, mock_cred):
+        mock_cred.side_effect = self._mock_creds
         row = self._acled_row()
         row["latitude"] = "invalid"
         row["longitude"] = "invalid"
 
         with respx.mock:
-            respx.get("https://api.acleddata.com/acled/read").mock(
+            respx.get(ACLED_URL).mock(
                 return_value=Response(200, json=self._acled_payload([row]))
             )
-            events = await worker.fetch()
+            events = await ACLEDConflictWorker().fetch()
 
         assert len(events) == 0
 
-    async def test_event_id_format(self):
-        worker = ACLEDConflictWorker()
-        worker._settings = type("S", (), {
-            "acled_api_key": "test_key", "acled_email": "test@test.com"
-        })()
-
+    @patch("workers.acled.get_credential")
+    async def test_event_id_format(self, mock_cred):
+        mock_cred.side_effect = self._mock_creds
         with respx.mock:
-            respx.get("https://api.acleddata.com/acled/read").mock(
+            respx.get(ACLED_URL).mock(
                 return_value=Response(200, json=self._acled_payload([
                     self._acled_row(event_id="ETH98765")
                 ]))
             )
-            events = await worker.fetch()
+            events = await ACLEDConflictWorker().fetch()
 
         assert events[0].id == "acled_ETH98765"

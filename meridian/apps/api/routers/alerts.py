@@ -28,7 +28,11 @@ async def list_rules(current_user: CurrentUser, db: AsyncSession = Depends(get_d
     return result.scalars().all()
 
 
-@router.post("/rules", response_model=AlertRuleResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/rules",
+    response_model=AlertRuleResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_rule(
     body: AlertRuleCreate,
     current_user: CurrentUser,
@@ -91,16 +95,6 @@ async def list_notifications(
     return result.scalars().all()
 
 
-@router.post("/notifications/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)
-async def mark_read(notification_id: int, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
-    await db.execute(
-        update(AlertNotification)
-        .where(AlertNotification.id == notification_id, AlertNotification.user_id == current_user.id)
-        .values(is_read=True)
-    )
-    await db.commit()
-
-
 @router.post("/notifications/read-all", status_code=status.HTTP_204_NO_CONTENT)
 async def mark_all_read(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
     await db.execute(
@@ -113,11 +107,21 @@ async def mark_all_read(current_user: CurrentUser, db: AsyncSession = Depends(ge
 
 @router.get("/notifications/unread-count")
 async def unread_count(current_user: CurrentUser, db: AsyncSession = Depends(get_db)) -> dict:
+    from sqlalchemy import func as sa_func
     result = await db.execute(
-        select(AlertNotification).where(
+        select(sa_func.count()).select_from(AlertNotification).where(
             AlertNotification.user_id == current_user.id,
             AlertNotification.is_read == False,
         )
     )
-    count = len(result.scalars().all())
-    return {"count": count}
+    return {"count": result.scalar() or 0}
+
+
+@router.post("/notifications/{notification_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_read(notification_id: int, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    await db.execute(
+        update(AlertNotification)
+        .where(AlertNotification.id == notification_id, AlertNotification.user_id == current_user.id)
+        .values(is_read=True)
+    )
+    await db.commit()

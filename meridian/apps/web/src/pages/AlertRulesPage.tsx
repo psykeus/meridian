@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
 import { useAlertStore, type AlertRule } from "@/stores/useAlertStore";
 import { timeAgo } from "@/lib/utils";
+import * as maplibregl from "maplibre-gl";
 
 const CONDITION_LABELS: Record<string, string> = {
   category:    "Event Category",
@@ -139,7 +140,13 @@ function RuleCard({ rule, onRefresh }: { rule: AlertRule; onRefresh: () => void 
 
 // ── 6-Step Alert Creation Wizard ──────────────────────────────────────────
 
-const STEP_LABELS = ["Name", "Condition", "Parameters", "Delivery", "Configure", "Review"];
+const STEP_LABELS = ["Name", "Condition", "Parameters", "Delivery", "Configure", "Frequency", "Review"];
+
+const FREQUENCY_OPTIONS = [
+  { key: "realtime", label: "Real-time", icon: "⚡", desc: "Get notified immediately for every matching event" },
+  { key: "hourly",   label: "Hourly Digest",  icon: "⏱", desc: "Receive a summary of matching events every hour" },
+  { key: "daily",    label: "Daily Digest",    icon: "📅", desc: "Receive a daily summary at 06:00 UTC" },
+];
 
 function AlertWizard({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(0);
@@ -155,6 +162,7 @@ function AlertWizard({ onClose }: { onClose: () => void }) {
   const [channels, setChannels] = useState<Set<string>>(new Set(["in_app"]));
   const [emailTo, setEmailTo] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [frequency, setFrequency] = useState("realtime");
 
   const toggleChannel = (ch: string) => {
     setChannels((prev) => {
@@ -173,7 +181,8 @@ function AlertWizard({ onClose }: { onClose: () => void }) {
         : paramValue.trim().length > 0;
       case 3: return channels.size > 0;
       case 4: return (!channels.has("email") || emailTo.trim().length > 0) && (!channels.has("webhook") || webhookUrl.trim().length > 0);
-      case 5: return true;
+      case 5: return frequency.length > 0;
+      case 6: return true;
       default: return false;
     }
   };
@@ -204,7 +213,7 @@ function AlertWizard({ onClose }: { onClose: () => void }) {
           name: name.trim(),
           description: description.trim() || undefined,
           condition_type: conditionType,
-          condition_params: buildConditionParams(),
+          condition_params: { ...buildConditionParams(), frequency },
           delivery_channels: [...channels],
           email_to: channels.has("email") ? emailTo.trim() : undefined,
           webhook_url: channels.has("webhook") ? webhookUrl.trim() : undefined,
@@ -254,7 +263,8 @@ function AlertWizard({ onClose }: { onClose: () => void }) {
         {step === 2 && <StepParameters conditionType={conditionType} paramValue={paramValue} setParamValue={setParamValue} regionBbox={regionBbox} setRegionBbox={setRegionBbox} />}
         {step === 3 && <StepDelivery channels={channels} toggleChannel={toggleChannel} />}
         {step === 4 && <StepConfig channels={channels} emailTo={emailTo} setEmailTo={setEmailTo} webhookUrl={webhookUrl} setWebhookUrl={setWebhookUrl} />}
-        {step === 5 && <StepReview name={name} description={description} conditionType={conditionType} paramValue={paramValue} regionBbox={regionBbox} channels={channels} emailTo={emailTo} webhookUrl={webhookUrl} />}
+        {step === 5 && <StepFrequency frequency={frequency} setFrequency={setFrequency} />}
+        {step === 6 && <StepReview name={name} description={description} conditionType={conditionType} paramValue={paramValue} regionBbox={regionBbox} channels={channels} emailTo={emailTo} webhookUrl={webhookUrl} frequency={frequency} />}
       </div>
 
       {/* Navigation */}
@@ -266,7 +276,7 @@ function AlertWizard({ onClose }: { onClose: () => void }) {
         >
           {step === 0 ? "Cancel" : "← Back"}
         </button>
-        {step < 5 ? (
+        {step < 6 ? (
           <button
             onClick={() => setStep((s) => s + 1)}
             disabled={!canAdvance()}
@@ -401,19 +411,22 @@ function StepParameters({ conditionType, paramValue, setParamValue, regionBbox, 
       )}
 
       {conditionType === "region_bbox" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <Field label="Min Latitude">
-            <input value={regionBbox.minLat} onChange={(e) => setRegionBbox({ ...regionBbox, minLat: e.target.value })} placeholder="-90" style={inputStyle} />
-          </Field>
-          <Field label="Max Latitude">
-            <input value={regionBbox.maxLat} onChange={(e) => setRegionBbox({ ...regionBbox, maxLat: e.target.value })} placeholder="90" style={inputStyle} />
-          </Field>
-          <Field label="Min Longitude">
-            <input value={regionBbox.minLng} onChange={(e) => setRegionBbox({ ...regionBbox, minLng: e.target.value })} placeholder="-180" style={inputStyle} />
-          </Field>
-          <Field label="Max Longitude">
-            <input value={regionBbox.maxLng} onChange={(e) => setRegionBbox({ ...regionBbox, maxLng: e.target.value })} placeholder="180" style={inputStyle} />
-          </Field>
+        <div>
+          <BboxMiniMap regionBbox={regionBbox} setRegionBbox={setRegionBbox} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+            <Field label="Min Latitude">
+              <input value={regionBbox.minLat} onChange={(e) => setRegionBbox({ ...regionBbox, minLat: e.target.value })} placeholder="-90" style={inputStyle} />
+            </Field>
+            <Field label="Max Latitude">
+              <input value={regionBbox.maxLat} onChange={(e) => setRegionBbox({ ...regionBbox, maxLat: e.target.value })} placeholder="90" style={inputStyle} />
+            </Field>
+            <Field label="Min Longitude">
+              <input value={regionBbox.minLng} onChange={(e) => setRegionBbox({ ...regionBbox, minLng: e.target.value })} placeholder="-180" style={inputStyle} />
+            </Field>
+            <Field label="Max Longitude">
+              <input value={regionBbox.maxLng} onChange={(e) => setRegionBbox({ ...regionBbox, maxLng: e.target.value })} placeholder="180" style={inputStyle} />
+            </Field>
+          </div>
         </div>
       )}
 
@@ -503,14 +516,58 @@ function StepConfig({ channels, emailTo, setEmailTo, webhookUrl, setWebhookUrl }
   );
 }
 
-function StepReview({ name, description, conditionType, paramValue, regionBbox, channels, emailTo, webhookUrl }: {
+function StepFrequency({ frequency, setFrequency }: {
+  frequency: string; setFrequency: (v: string) => void;
+}) {
+  return (
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
+        Alert frequency
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>
+        Choose how often you want to receive notifications for matching events
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {FREQUENCY_OPTIONS.map((opt) => (
+          <button
+            key={opt.key}
+            onClick={() => setFrequency(opt.key)}
+            style={{
+              display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+              borderRadius: 6, cursor: "pointer", textAlign: "left",
+              background: frequency === opt.key ? "rgba(0,230,118,.08)" : "var(--bg-card)",
+              border: `1.5px solid ${frequency === opt.key ? "var(--green-primary)" : "var(--border)"}`,
+            }}
+          >
+            <div style={{
+              width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+              background: frequency === opt.key ? "var(--green-primary)" : "transparent",
+              border: frequency === opt.key ? "none" : "1.5px solid var(--border)",
+              color: "var(--bg-app)", fontSize: 9, fontWeight: 700,
+            }}>
+              {frequency === opt.key && "●"}
+            </div>
+            <div style={{ fontSize: 20, flexShrink: 0 }}>{opt.icon}</div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: frequency === opt.key ? "var(--green-primary)" : "var(--text-primary)" }}>{opt.label}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{opt.desc}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StepReview({ name, description, conditionType, paramValue, regionBbox, channels, emailTo, webhookUrl, frequency }: {
   name: string; description: string; conditionType: string; paramValue: string;
   regionBbox: { minLat: string; maxLat: string; minLng: string; maxLng: string };
-  channels: Set<string>; emailTo: string; webhookUrl: string;
+  channels: Set<string>; emailTo: string; webhookUrl: string; frequency: string;
 }) {
   const condValue = conditionType === "region_bbox"
     ? `[${regionBbox.minLat}, ${regionBbox.minLng}] → [${regionBbox.maxLat}, ${regionBbox.maxLng}]`
     : paramValue;
+  const freqLabel = FREQUENCY_OPTIONS.find((f) => f.key === frequency)?.label ?? frequency;
 
   return (
     <div>
@@ -520,6 +577,7 @@ function StepReview({ name, description, conditionType, paramValue, regionBbox, 
         {description && <ReviewRow label="Description" value={description} />}
         <ReviewRow label="Condition" value={`${CONDITION_LABELS[conditionType]}: ${condValue}`} />
         <ReviewRow label="Delivery" value={[...channels].join(", ")} />
+        <ReviewRow label="Frequency" value={freqLabel} />
         {channels.has("email") && <ReviewRow label="Email" value={emailTo} />}
         {channels.has("webhook") && <ReviewRow label="Webhook" value={webhookUrl} />}
       </div>
@@ -532,6 +590,106 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
     <div style={{ display: "flex", gap: 12 }}>
       <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", width: 80, flexShrink: 0 }}>{label}</span>
       <span style={{ fontSize: 12, color: "var(--text-primary)" }}>{value}</span>
+    </div>
+  );
+}
+
+// ── Bbox Mini-Map ─────────────────────────────────────────────────────────
+
+function BboxMiniMap({ regionBbox, setRegionBbox }: {
+  regionBbox: { minLat: string; maxLat: string; minLng: string; maxLng: string };
+  setRegionBbox: (v: typeof regionBbox) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const drawingRef = useRef<{ start: maplibregl.LngLat } | null>(null);
+
+  const updateBboxRect = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const src = map.getSource("bbox") as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    const minLat = parseFloat(regionBbox.minLat), maxLat = parseFloat(regionBbox.maxLat);
+    const minLng = parseFloat(regionBbox.minLng), maxLng = parseFloat(regionBbox.maxLng);
+    if ([minLat, maxLat, minLng, maxLng].some(isNaN)) {
+      src.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+    src.setData({
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [[[minLng, minLat], [maxLng, minLat], [maxLng, maxLat], [minLng, maxLat], [minLng, minLat]]],
+      },
+    } as GeoJSON.Feature);
+  }, [regionBbox]);
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+      center: [0, 20],
+      zoom: 1,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+
+    map.on("load", () => {
+      map.addSource("bbox", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      map.addLayer({
+        id: "bbox-fill", type: "fill", source: "bbox",
+        paint: { "fill-color": "#00e676", "fill-opacity": 0.15 },
+      });
+      map.addLayer({
+        id: "bbox-line", type: "line", source: "bbox",
+        paint: { "line-color": "#00e676", "line-width": 2 },
+      });
+      updateBboxRect();
+    });
+
+    // Shift+drag to draw bbox
+    let drawing = false;
+    map.on("mousedown", (e) => {
+      if (!e.originalEvent.shiftKey) return;
+      e.preventDefault();
+      drawing = true;
+      drawingRef.current = { start: e.lngLat };
+      map.getCanvas().style.cursor = "crosshair";
+    });
+    map.on("mousemove", (e) => {
+      if (!drawing || !drawingRef.current) return;
+      const s = drawingRef.current.start;
+      const minLat = Math.min(s.lat, e.lngLat.lat).toFixed(4);
+      const maxLat = Math.max(s.lat, e.lngLat.lat).toFixed(4);
+      const minLng = Math.min(s.lng, e.lngLat.lng).toFixed(4);
+      const maxLng = Math.max(s.lng, e.lngLat.lng).toFixed(4);
+      setRegionBbox({ minLat, maxLat, minLng, maxLng });
+    });
+    const stopDraw = () => {
+      drawing = false;
+      drawingRef.current = null;
+      if (map.getCanvas()) map.getCanvas().style.cursor = "";
+    };
+    map.on("mouseup", stopDraw);
+    const canvas = map.getCanvas();
+    canvas.addEventListener("mouseleave", stopDraw);
+
+    return () => { canvas.removeEventListener("mouseleave", stopDraw); map.remove(); mapRef.current = null; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { updateBboxRect(); }, [updateBboxRect]);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <div ref={containerRef} style={{ width: "100%", height: 180, borderRadius: 6, border: "1px solid var(--border)", overflow: "hidden" }} />
+      <div style={{
+        position: "absolute", bottom: 4, left: 4, fontSize: 9, color: "var(--text-muted)",
+        background: "rgba(10,14,26,.8)", padding: "2px 6px", borderRadius: 3,
+      }}>
+        Hold Shift + drag to draw region
+      </div>
     </div>
   );
 }

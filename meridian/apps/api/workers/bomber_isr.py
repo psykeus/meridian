@@ -6,11 +6,20 @@ import httpx
 
 from core.credential_store import get_credential
 from models.geo_event import FeedCategory, GeoEvent, SeverityLevel
+from workers._country_coords import COUNTRY_COORDS
 from workers.base import FeedWorker
 
 logger = logging.getLogger(__name__)
 
 _STATES_URL = "https://opensky-network.org/api/states/all"
+
+# Flag → approximate home base coordinates for grounded events
+_FLAG_COORDS: dict[str, tuple[float, float]] = {
+    "US": (38.26, -85.66),   # avg CONUS military
+    "GB": (51.75, -1.58),    # RAF Brize Norton
+    "NATO": (50.91, 6.96),   # Geilenkirchen
+    "FR": (48.78, 2.10),     # BA 105 Évreux
+}
 
 # Known military bomber and ISR (Intelligence, Surveillance, Reconnaissance) aircraft
 # ICAO24 hex codes from public aviation registries and spotters databases
@@ -75,6 +84,14 @@ class BomberISRWorker(FeedWorker):
     refresh_interval = 300  # 5 minutes
     run_on_startup = False  # avoid rate-limiting OpenSky
 
+    def _get_coords(self, flag: str) -> tuple[float, float]:
+        """Return (lat, lng) for a flag/country code."""
+        if flag in _FLAG_COORDS:
+            return _FLAG_COORDS[flag]
+        if flag in COUNTRY_COORDS:
+            return COUNTRY_COORDS[flag]
+        return (38.26, -85.66)  # default CONUS
+
     async def fetch(self) -> list[GeoEvent]:
         # Build auth
         auth_kwargs: dict = {}
@@ -83,14 +100,19 @@ class BomberISRWorker(FeedWorker):
         if username and password:
             auth_kwargs["auth"] = (username, password)
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(_STATES_URL, **auth_kwargs)
-            resp.raise_for_status()
-            data = resp.json()
+        states: list = []
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(_STATES_URL, **auth_kwargs)
+                resp.raise_for_status()
+                data = resp.json()
+            states = data.get("states") or []
+        except Exception as exc:
+            logger.warning("Bomber/ISR: OpenSky API error: %s — generating grounded-only events", exc)
 
-        states = data.get("states") or []
         events: list[GeoEvent] = []
         now = datetime.now(timezone.utc)
+        seen_icao24s: set[str] = set()
 
         for state in states:
             try:
@@ -103,13 +125,11 @@ class BomberISRWorker(FeedWorker):
                 if icao24_lower not in _BOMBER_ISR_AIRCRAFT:
                     continue
 
+                seen_icao24s.add(icao24_lower)
+
                 if lng is None or lat is None:
                     continue
                 if not (-90 <= float(lat) <= 90) or not (-180 <= float(lng) <= 180):
-                    continue
-
-                # Skip aircraft on the ground — not operationally interesting
-                if on_ground:
                     continue
 
                 aircraft = _BOMBER_ISR_AIRCRAFT[icao24_lower]
@@ -121,10 +141,11 @@ class BomberISRWorker(FeedWorker):
 
                 role = aircraft["role"]
                 severity = _ROLE_SEVERITY.get(role, SeverityLevel.medium)
+                status = "AIRBORNE" if not on_ground else "ON GROUND"
 
                 title = (
                     f"MIL: {aircraft['type']} [{callsign_str}] — "
-                    f"{role} ({aircraft['flag']})"
+                    f"{role} — {status} ({aircraft['flag']})"
                 )
                 body = (
                     f"{aircraft['type']} ({aircraft['unit']}) — {role}. "
@@ -135,7 +156,7 @@ class BomberISRWorker(FeedWorker):
 
                 events.append(
                     GeoEvent(
-                        id=f"bisr_{icao24_lower}",
+                        id=f"bisr_{icao24_lower}_{int(now.timestamp())}",
                         source_id=self.source_id,
                         category=self.category,
                         subcategory="bomber_isr",
@@ -159,10 +180,63 @@ class BomberISRWorker(FeedWorker):
                             "vertical_rate": vert_rate,
                             "origin_country": origin,
                             "squawk": squawk,
+                            "on_ground": bool(on_ground),
+                            "status": status.lower().replace(" ", "_"),
                         },
                     )
                 )
             except Exception:
                 continue
+
+        # Generate "NOT BROADCASTING" events grouped by unit for unseen aircraft
+        grounded_units: dict[str, list[str]] = {}
+        for icao24, info in _BOMBER_ISR_AIRCRAFT.items():
+            if icao24 not in seen_icao24s:
+                key = f"{info['unit']}|{info['type']}"
+                grounded_units.setdefault(key, []).append(icao24)
+
+        for unit_key, icao_list in grounded_units.items():
+            first_icao = icao_list[0]
+            aircraft = _BOMBER_ISR_AIRCRAFT[first_icao]
+            flag = aircraft["flag"]
+            lat, lng = self._get_coords(flag)
+            count = len(icao_list)
+            count_str = f" x{count}" if count > 1 else ""
+
+            title = (
+                f"MIL: {aircraft['type']}{count_str} — "
+                f"{aircraft['role']} — NOT BROADCASTING ({flag})"
+            )
+            body = (
+                f"{aircraft['type']} ({aircraft['unit']}) — {aircraft['role']}. "
+                f"{count} aircraft not broadcasting ADS-B. "
+                f"Likely grounded, in maintenance, or operating transponder-off."
+            )
+
+            events.append(
+                GeoEvent(
+                    id=f"bisr_grounded_{first_icao}_{int(now.timestamp())}",
+                    source_id=self.source_id,
+                    category=self.category,
+                    subcategory="bomber_isr",
+                    title=title,
+                    body=body,
+                    severity=SeverityLevel.info,
+                    lat=lat,
+                    lng=lng,
+                    event_time=now,
+                    url=f"https://opensky-network.org/aircraft-profile?icao24={first_icao}",
+                    metadata={
+                        "icao24": first_icao,
+                        "aircraft_type": aircraft["type"],
+                        "role": aircraft["role"],
+                        "unit": aircraft["unit"],
+                        "flag": flag,
+                        "on_ground": True,
+                        "status": "not_broadcasting",
+                        "aircraft_count": count,
+                    },
+                )
+            )
 
         return events

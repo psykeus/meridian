@@ -106,6 +106,17 @@ CREATE TABLE geo_events (
 
 SELECT create_hypertable('geo_events', 'ingested_at', if_not_exists => TRUE);
 
+-- Compress chunks older than 7 days (90%+ space savings on time-series data)
+ALTER TABLE geo_events SET (
+  timescaledb.compress,
+  timescaledb.compress_segmentby = 'source_id',
+  timescaledb.compress_orderby = 'ingested_at DESC'
+);
+SELECT add_compression_policy('geo_events', INTERVAL '7 days', if_not_exists => TRUE);
+
+-- Retain data for 10 years, then auto-drop
+SELECT add_retention_policy('geo_events', INTERVAL '10 years', if_not_exists => TRUE);
+
 CREATE INDEX ON geo_events USING GIST (geom);
 CREATE INDEX ON geo_events (category, ingested_at DESC);
 CREATE INDEX ON geo_events (source_id, ingested_at DESC);

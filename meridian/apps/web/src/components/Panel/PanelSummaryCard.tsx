@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { apiFetch } from "@/lib/api";
 
 interface PanelSummaryCardProps {
   topic: string;
@@ -27,7 +28,7 @@ export function PanelSummaryCard({ topic, contextHint }: PanelSummaryCardProps) 
       : `Provide a concise 2-3 sentence intelligence summary for the "${topic}" panel. Focus on current threat indicators and notable patterns.`;
 
     try {
-      const resp = await fetch("/ai/chat", {
+      const resp = await apiFetch("/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

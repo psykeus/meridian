@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.database import Base
 
@@ -36,7 +36,7 @@ class ShareableLink(Base):
 # ─── Pydantic Schemas ─────────────────────────────────────────────────────────
 
 class AnnotationCommentCreate(BaseModel):
-    body: str
+    body: str = Field(..., max_length=10000)
 
 
 class AnnotationCommentResponse(BaseModel):
