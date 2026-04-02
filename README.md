@@ -1,3 +1,7 @@
+************THIS REPO IS IN AN ALPHA STAGE*************
+This repo is an idea based off of other open-source intelligence platforms, it's not intended to be original, it's intended to create a useful situational awareness of open data.
+Long Live OSINT
+
 # Meridian
 
 **Open-source global situational awareness and collaborative intelligence platform.**
